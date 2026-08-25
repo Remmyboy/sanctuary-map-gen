@@ -42,6 +42,38 @@ and will not notice changes underneath it.
 
 ---
 
+## The app
+
+The converter also ships as a standalone Windows exe — no PowerShell, no
+.NET install, no setup:
+
+```
+app/SanctuaryMapConverter/     .NET 8 WinForms port of Convert-ScMap.ps1
+```
+
+Build with `dotnet publish -c Release`, then copy `texturepack/` and
+`docs/texture-map.csv` into a `data/` folder next to the exe (that folder is
+the CC0 library, and everything in it is redistributable). The window
+auto-detects the Steam installs, lists every SupCom map it can find, and
+offers both texture modes:
+
+- **CC0 textures** — always available; uses the bundled data.
+- **Original FA textures** — only enabled when the app finds `env.scd` in
+  *your* Forged Alliance install. The exe ships zero GPG art; the source
+  textures come from the copy of the game you own, and the result stays on
+  your machine.
+
+The same engine sources (`src/*.cs`) are compiled into the exe directly, and
+its output is byte-identical to the PowerShell pipeline's (verified per file
+against the game's own parsers, in both texture modes). Headless mode for
+scripting:
+
+```
+SanctuaryMapConverter.exe --convert "C:\...\Maps\SCMP_009" --cc0
+```
+
+---
+
 ## What transfers
 
 Everything the source map is, short of decals:
@@ -190,7 +222,7 @@ blocked if any neighbour in its 3×3 exceeds it.
 
 ```
 Convert-ScMap.ps1       SupCom map -> Sanctuary map (the main event)
-Convert-ScMapGui.ps1    the same, with a WinForms window
+app/SanctuaryMapConverter/  standalone .NET 8 exe: GUI + headless CLI
 New-RandomMap.ps1       random maps by style and biome
 New-*Map.ps1            four hand-tuned named maps
 Deploy-All.ps1          build + mirror to both game trees + validate

@@ -6,3 +6,7 @@ texturepack/
 maps/
 
 *.log
+
+# .NET build output
+app/*/bin/
+app/*/obj/

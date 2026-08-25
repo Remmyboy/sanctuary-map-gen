@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>SanctuaryMapConverter</AssemblyName>
+    <RootNamespace>SanctuaryMapConverter</RootNamespace>
+    <!-- The engine: the same C# the PowerShell drivers compile at run time,
+         linked from src/ rather than copied, so there is exactly one
+         implementation of every format. -->
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <SelfContained Condition="'$(Configuration)'=='Release'">true</SelfContained>
+    <RuntimeIdentifier Condition="'$(Configuration)'=='Release'">win-x64</RuntimeIdentifier>
+    <PublishSingleFile Condition="'$(Configuration)'=='Release'">true</PublishSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\*.cs" LinkBase="Engine" />
+  </ItemGroup>
+
+</Project>
