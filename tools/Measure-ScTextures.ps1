@@ -83,7 +83,7 @@ function Get-LumaStdCoarse([byte[]]$bytes) {
         }
     }
     if ($n -lt 2) { return 20.0 }
-    return [math]::Round([math]::Sqrt([math]::Max(0, $s2 / $n - ($s / $n) * ($s / $n))), 1)
+    return [math]::Round([math]::Sqrt([math]::Max(0.0, $s2 / $n - ($s / $n) * ($s / $n))), 1)
 }
 function Get-LumaStd([byte[]]$bytes) {
     $w = 0; $h = 0
@@ -96,7 +96,7 @@ function Get-LumaStd([byte[]]$bytes) {
         $s += $l; $s2 += $l * $l; $n++
     }
     if ($n -lt 2) { return 45.0 }
-    return [math]::Round([math]::Sqrt([math]::Max(0, $s2 / $n - ($s / $n) * ($s / $n))), 1)
+    return [math]::Round([math]::Sqrt([math]::Max(0.0, $s2 / $n - ($s / $n) * ($s / $n))), 1)
 }
 function Get-Role([string]$leaf) {
     foreach ($r in $roleRules.GetEnumerator()) { if ($leaf -match $r.Value) { return $r.Key } }

@@ -23,6 +23,7 @@ namespace SanctuaryMapConverter
             "--deploy-all" => DeployAllCmd(args),
             "--flat" => Flat(args),
             "--named" => NamedCmd(args),
+            "--tool" => Tools.ToolsCli.Run(args),
             _ => Usage(),
         };
 
