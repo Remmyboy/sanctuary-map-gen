@@ -1,0 +1,8 @@
+# Generated CC0 texture library - rebuild with tools/Build-TexturePack.ps1
+# (the manifest is regenerated too; the download cache is ~200 MB of zips)
+texturepack/
+
+# Generated maps, previews and terrain dumps - session outputs, 2+ GB
+maps/
+
+*.log
