@@ -7,10 +7,10 @@ namespace SanctuaryMapConverter
         [STAThread]
         static int Main(string[] args)
         {
-            // --convert runs headless: the same orchestration the window
+            // Any --verb runs headless: the same orchestration the window
             // drives, callable from a terminal and from the golden-master
             // tests that prove the port against the PowerShell pipeline.
-            if (args.Length > 0 && args[0] == "--convert")
+            if (args.Length > 0 && args[0].StartsWith("--"))
                 return Cli.Run(args);
 
             ApplicationConfiguration.Initialize();

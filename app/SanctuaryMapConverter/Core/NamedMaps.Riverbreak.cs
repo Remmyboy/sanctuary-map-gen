@@ -1,0 +1,415 @@
+using System.Linq;
+using System.Text;
+
+namespace SanctuaryMapConverter.Core
+{
+    // New-RiverbreakMap.ps1 in C#.
+    //
+    // Builds "Riverbreak" - a 1v1, 512 m, tropical map.
+    //
+    // Serpent Crossing's skeleton (corner-to-corner river, two causeways, bases
+    // back from opposite banks) with two things replaced:
+    //
+    //   * the river is a 1-D noise meander of varying width rather than a sine,
+    //     so it wanders like a river instead of tracing a wave
+    //   * the organic mesa field is laid over the rolling ground, suppressed near
+    //     the channel, the base pads and the bridge approaches
+    //
+    // Everything is placed in river-relative coordinates (t along the diagonal,
+    // signed metres from the actual centreline), so the layout keeps its
+    // clearances no matter where the meander happens to go. CarveRamps then
+    // guarantees the hills are climbable, and it is forbidden from touching the
+    // channel so it can never hand out a free crossing.
+    public static partial class NamedMaps
+    {
+        public static string RiverbreakMap(string mapsRoot, string propExtension = ".santp",
+            Action<string> log = null, ValidateOptions validate = null, string debugOut = null,
+            string folder = "Riverbreak", string mapName = "Riverbreak")
+        {
+            log ??= _ => { };
+            EngineState.Reset();   // fresh MapGen statics, like a fresh PS process
+            int size = 512;             // the script's $Size parameter default
+
+            string mapDir = Path.Combine(mapsRoot, folder);
+            string texDir = Path.Combine(mapDir, "Textures");
+            // The PS script threw unless -Force; the callers always passed it.
+            if (Directory.Exists(mapDir)) Directory.Delete(mapDir, true);
+            Directory.CreateDirectory(texDir);
+
+            // --------------------------------------------------------- config ----
+
+            double M = size;
+            MapGen.Configure(size, size >= 512 ? 1024 : 512);
+            MapGen.UseRiver     = true;
+            MapGen.Organic      = false;
+            MapGen.OrganicRiver = true;
+            MapGen.OrganicHills = true;
+            MapGen.HillStrength = 1.0f;
+            MapGen.CurveAmp         = 44.0f;
+            MapGen.MesaScale        = 0.155f;
+            MapGen.MesaThreshold    = 0.665f;  // higher = fewer, more deliberate massifs
+            MapGen.ErosionStrength  = 0.055f;  // bites bays out of the outlines
+            MapGen.MesaTier1Height  = 12.0f;
+            MapGen.MesaTier2Height  = 8.0f;
+            MapGen.OutcropHeight    = 0.0f;    // no scattered buttes: pure clutter for pathing
+
+            // Bases 62 m off the centreline, 27% along the diagonal. Derived from
+            // the real meander rather than hardcoded, so the clearance holds
+            // however it wanders.
+            MapGen.ComputeBridgePositions();
+            MapGen.PlaceBases(0.27f, 62.0f);
+
+            float bx0 = MapGen.BaseX[0], bz0 = MapGen.BaseZ[0];
+            log(string.Format("Bases: ({0:N0},{1:N0}) and ({2:N0},{3:N0})", bx0, bz0, MapGen.BaseX[1], MapGen.BaseZ[1]));
+            log(string.Format("Bridges: ({0:N0},{1:N0}) and ({2:N0},{3:N0})",
+                MapGen.BridgeX[0], MapGen.BridgeZ[0], MapGen.BridgeX[1], MapGen.BridgeZ[1]));
+
+            log($"Building heightfield ({size} m, meandering river + organic hills)...");
+            MapGen.BuildHeight();
+
+            // --------------------------------------------------- ramp carving ----
+
+            log("Carving ramps...");
+            MapGen.BuildWalkable();
+            int walk0  = MapGen.WalkableCount();
+            int before = MapGen.CountTrue(MapGen.Reachable(bx0, bz0));
+            log(string.Format("  before: {0:P0} of walkable ground reachable from ARMY_1", (double)before / walk0));
+            int carved = MapGen.CarveRamps(bx0, bz0, 40, 11.0f, 9.0f, 120);
+            // Sand off invisible one-cell obstacles: they leave the map 100%
+            // reachable but litter it with pinch points units path around.
+            int despeckled = MapGen.SmoothPathingSpecks(60, 8);
+            log(string.Format("  smoothed {0} isolated blocked patches", despeckled));
+            log(string.Format("  cut {0} ramp corridor(s)", carved));
+
+            MapGen.BuildWalkable();
+            bool[,] reach = MapGen.Reachable(bx0, bz0);
+            int walk = MapGen.WalkableCount();
+            int rc   = MapGen.CountTrue(reach);
+            log(string.Format("  after:  {0:P0} of walkable ground reachable ({1:N0} / {2:N0})", (double)rc / walk, rc, walk));
+
+            log("Building stratum weights...");
+            MapGen.BuildLayers();
+
+            // -------------------------------------------------------- markers ----
+
+            // Alloys in river-relative coordinates: (t along the diagonal, metres
+            // from the centreline). Positive perp is the top-left player's bank;
+            // the mirror set is generated by (1-t, -perp), which is exactly the
+            // 180-degree rotation.
+            //
+            // Bank room runs out near the corners: at t, the top edge caps perp at
+            // about (Size - 10 - Size*(1-t)) / 0.7071, so a large offset at low t
+            // lands off the map. These are all inside that.
+            double[][] alloySideA =
+            {
+                new[] { 0.20, 50.0 },  new[] { 0.24, 88.0 },  new[] { 0.33, 58.0 },  new[] { 0.31, 118.0 },
+                new[] { 0.15, 48.0 },  new[] { 0.40, 92.0 },  new[] { 0.46, 148.0 }, new[] { 0.55, 62.0 },
+                new[] { 0.50, 44.0 },
+            };
+
+            var spawns = new (string Army, double X, double Z)[]
+            {
+                ("ARMY_1", MapGen.BaseX[0], MapGen.BaseZ[0]),
+                ("ARMY_2", MapGen.BaseX[1], MapGen.BaseZ[1]),
+            };
+
+            bool TestOk(double x, double z, double maxSlope, double minRiver)
+            {
+                if (x < 10 || x > (M - 10) || z < 10 || z > (M - 10)) return false;
+                if (MapGen.HeightAtWorld((float)x, (float)z) <= (MapGen.WaterLevel + 1.0)) return false;
+                if (MapGen.SlopeAtWorld((float)x, (float)z) > maxSlope) return false;
+                if (Math.Abs(MapGen.RiverDist((float)x, (float)z)) < minRiver) return false;
+                return MapGen.IsReachable(reach, (float)x, (float)z);
+            }
+
+            double[] ResolveSpot(double x, double z, double maxSlope, double minRiver, string label)
+            {
+                if (TestOk(x, z, maxSlope, minRiver)) return new[] { x, z };
+                foreach (int rad in new[] { 5, 10, 15, 21, 28, 36, 45 })
+                {
+                    for (int deg = 0; deg <= 23; deg++)
+                    {
+                        double a = deg * 15 * Math.PI / 180;
+                        double nx = Math.Round(x + rad * Math.Cos(a));
+                        double nz = Math.Round(z + rad * Math.Sin(a));
+                        if (TestOk(nx, nz, maxSlope, minRiver))
+                        {
+                            log(string.Format("  nudged {0}: ({1:N0},{2:N0}) -> ({3},{4})  [{5} m]", label, x, z, nx, nz, rad));
+                            return new[] { nx, nz };
+                        }
+                    }
+                }
+                log($"WARNING: could not place {label}");
+                return new[] { x, z };
+            }
+
+            log("Placing markers...");
+            var resolvedA = new List<double[]>();
+            int i = 0;
+            foreach (var rp in alloySideA)
+            {
+                i++;
+                float t = (float)rp[0];
+                float perp = (float)rp[1];
+                MapGen.RiverToWorld(t, perp, out float wx, out float wz);
+                resolvedA.Add(ResolveSpot(wx, wz, 12.0, 34.0, string.Format("alloy A{0}", i)));
+            }
+
+            var alloyPts = new List<double[]>();
+            foreach (var p in resolvedA) alloyPts.Add(new[] { p[0], p[1] });
+            foreach (var p in resolvedA)
+            {
+                double rx = M - p[0];
+                double rz = M - p[1];
+                alloyPts.Add(new[] { rx, rz });
+            }
+
+            // ------------------------------------------------------ validation ---
+
+            log("Pathability (Land layer, maxSlope 30 deg):");
+            bool enemyOk = MapGen.IsReachable(reach, MapGen.BaseX[1], MapGen.BaseZ[1]);
+            log(string.Format("  enemy spawn reachable overland: {0}", enemyOk ? "YES" : "NO - the bridges do not connect!"));
+            var bad = new List<string>(); i = 0;
+            foreach (var p in alloyPts)
+            {
+                i++;
+                if (!MapGen.IsReachable(reach, (float)p[0], (float)p[1])) bad.Add(string.Format("Alloys_{0:D3}", i));
+            }
+            if (bad.Count > 0) log(string.Format("WARNING:   cut off: {0}", string.Join(", ", bad)));
+            else log(string.Format("  all {0} alloy spots reachable on foot", alloyPts.Count));
+            for (int b = 0; b < 2; b++)
+            {
+                bool ok = MapGen.IsReachable(reach, MapGen.BridgeX[b], MapGen.BridgeZ[b]);
+                log(string.Format("  bridge {0} deck reachable: {1}", b + 1, ok ? "YES" : "NO"));
+            }
+
+            log("Crossings:");
+            for (int b = 0; b < 2; b++)
+            {
+                float[] prof = MapGen.CrossingProfile(b, 161);
+                float min = prof.Min();
+                string state = min > MapGen.WaterLevel ? "CONTINUOUS dry land" : "BROKEN";
+                log(string.Format("  bridge {0}: lowest point {1:N2} m (water {2:N1} m) -> {3}", b + 1, min, MapGen.WaterLevel, state));
+            }
+            float riverMax = MapGen.RiverMaxHeightBetweenBridges();
+            log(string.Format("  river elsewhere: highest bed point {0:N2} m -> {1}", riverMax,
+                riverMax < MapGen.WaterLevel ? "sealed" : "LEAKS"));
+
+            float[] ts = MapGen.TerrainStats(); float land = ts[2];
+            log(string.Format("Terrain: {0:N1} m .. {1:N2} m ({2:N1} m of relief)", ts[0], ts[1], ts[1] - ts[0]));
+            log(string.Format("  slopes: {0:P0} flat (<6), {1:P0} gentle (6-15), {2:P0} steep (15-34), {3:P0} cliff (>34)",
+                ts[3] / land, ts[4] / land, ts[5] / land, ts[6] / land));
+
+            float[] og = MapGen.OpenGroundStats(6.0f);
+            log(string.Format("  open ground: largest contiguous level area is {0:P0} of the land, {1:N0} separate areas over 400 cells",
+                og[0] / og[1], og[2]));
+            log("");
+
+            // ------------------------------------------------------- textures ----
+
+            log("Writing textures...");
+            MapGen.WriteHeightmap(Path.Combine(texDir, "heightmap.raw"));
+            MapGen.WriteStratums(texDir);
+            MapGen.WriteTints(texDir, 2048);
+            MapGen.WritePreview(Path.Combine(texDir, "preview.png"), 512, false, null, null, null);
+            File.Copy(Path.Combine(texDir, "preview.png"), Path.Combine(mapDir, "preview.png"));
+
+            // ----------------------------------------------------------- props ---
+
+            string[] treeBps = { "edbm0121", "edbm0122", "edbm0123", "edbm0124", "edbm0125" };
+            string[] rockBps = { "edmm0104", "edmm0106", "edms0110" };
+            float[] avoidX = alloyPts.Select(p => (float)p[0]).ToArray();
+            float[] avoidZ = alloyPts.Select(p => (float)p[1]).ToArray();
+
+            log($"Scattering props ({propExtension})...");
+            var buckets = new Dictionary<string, List<JObj>>();
+            foreach (var b in treeBps.Concat(rockBps)) buckets[b] = new List<JObj>();
+            foreach (var (bps, rocks, count, scatterSeed) in new[]
+            {
+                (treeBps, false, 340, 8081),
+                (rockBps, true, 130, 4409),
+            })
+            {
+                float[] flat = MapGen.Scatter(scatterSeed, count, rocks, avoidX, avoidZ, 13.0f);
+                int n = flat.Length / 5;
+                for (int k = 0; k < n; k++)
+                {
+                    double x = flat[k * 5], y = flat[k * 5 + 1], z = flat[k * 5 + 2];
+                    double yaw = flat[k * 5 + 3], sc = flat[k * 5 + 4];
+                    string bp = bps[k % bps.Length];
+                    foreach (var inst in new[] { new[] { x, z, yaw }, new[] { M - x, M - z, yaw + Math.PI } })
+                    {
+                        buckets[bp].Add(Json.Obj(
+                            ("position", Json.Vec3(Math.Round(inst[0], 3), Math.Round(y, 3), Math.Round(inst[1], 3))),
+                            ("rotation", Json.Quat(0.0, Math.Round(Math.Sin(inst[2] / 2), 7), 0.0, Math.Round(Math.Cos(inst[2] / 2), 7))),
+                            ("scale", Json.Vec3(Math.Round(sc, 4), Math.Round(sc, 4), Math.Round(sc, 4)))));
+                    }
+                }
+                log(string.Format("  {0}: {1} per bank -> {2} total", rocks ? "rocks" : "trees", n, n * 2));
+            }
+            var propGroups = new List<JObj>();
+            foreach (var b in treeBps.Concat(rockBps))
+            {
+                if (buckets[b].Count == 0) continue;
+                propGroups.Add(Json.Obj(
+                    ("blueprintPath", $"Environment/01_Highlands/Props/{b}/{b}{propExtension}"),
+                    ("transforms", buckets[b])));
+            }
+
+            if (debugOut != null)
+            {
+                var mx = new List<float>(); var mz = new List<float>(); var mk = new List<int>();
+                foreach (var g in propGroups)
+                    foreach (JObj tr in (List<JObj>)g.Items[1].Value)
+                    {
+                        var pos = (JObj)tr.Items[0].Value;
+                        mx.Add((float)(double)pos.Items[0].Value);
+                        mz.Add((float)(double)pos.Items[2].Value);
+                        mk.Add(2);
+                    }
+                foreach (var p in alloyPts) { mx.Add((float)p[0]); mz.Add((float)p[1]); mk.Add(1); }
+                foreach (var sp in spawns)  { mx.Add((float)sp.X); mz.Add((float)sp.Z); mk.Add(0); }
+                MapGen.WritePreview(debugOut, 900, true, mx.ToArray(), mz.ToArray(), mk.ToArray());
+                string stem = Path.ChangeExtension(debugOut, null).TrimEnd('.');
+                MapGen.WriteHeightPreview(stem + "_elevation.png", 900);
+                MapGen.WriteWalkPreview(stem + "_walk.png", 900, reach);
+                log($"  renders -> {debugOut}, {stem}_elevation.png, {stem}_walk.png");
+            }
+
+            // ------------------------------------------------------------ json ----
+
+            static JObj S(string tex, double tile, double far, double tri, double triFar,
+                          double nrm, double nrmFar, double nb, double hb,
+                          double[] diff, double[] farRemap, double[] mMin, double[] mMax)
+            {
+                string p = $"Environment/01_Highlands/Stratum/{tex}";
+                return Json.Obj(
+                    ("name", null),
+                    ("albedo", Json.Obj(("path", p + "_albedo.tga"))),
+                    ("normal", Json.Obj(("path", p + "_normal.tga"))),
+                    ("mask", Json.Obj(("path", p + "_mask.tga"))),
+                    ("tileSize", Json.Obj(("x", tile), ("y", tile))),
+                    ("tileSizeFar", Json.Obj(("x", far), ("y", far))),
+                    ("tileSizeTriplanar", tri),
+                    ("tileSizeFarTriplanar", triFar),
+                    ("normalScale", nrm),
+                    ("normalScaleFar", nrmFar),
+                    ("normalFarNearBlend", nb),
+                    ("heightFarNearBlend", hb),
+                    ("diffuseRemap", Json.Rgba(diff[0], diff[1], diff[2], diff[3])),
+                    ("farColorRemap", Json.Rgba(farRemap[0], farRemap[1], farRemap[2], farRemap[3])),
+                    ("maskRemapMin", Json.Quat(mMin[0], mMin[1], mMin[2], mMin[3])),
+                    ("maskRemapMax", Json.Quat(mMax[0], mMax[1], mMax[2], mMax[3])));
+            }
+
+            double[] g07D = { 0.309759647, 0.319, 0.268598, 1.0 };
+            double[] g07F = { 0.0159015749, 0.007912427, 0.004240413, 0.0 };
+            var stratums = new List<JObj>
+            {
+                S("highlands_100m_grass07",      10, 64, 12, 36, 1.0, 1.22, 0.0,   0.5, g07D, g07F, new[] { 0.0, 0.0, 0.1, 0.0 }, new[] { 1.0, 1.0, 0.9, 1.0 }),
+                S("highlands_60m_rock_basalt01", 10, 44, 10, 36, 1.0, 1.0,  0.2,   0.5, new[] { 0.58, 0.556, 0.54, 1.0 },      new[] { 1.0, 1.0, 1.0, 0.0 }, new[] { 0.0, 0.0, 0.0, 0.0 }, new[] { 1.0, 1.0, 1.0, 1.0 }),
+                S("highlands_100m_heather03",     8, 32, 12, 36, 1.0, 1.0,  0.5,   0.5, new[] { 0.298, 0.286, 0.192, 1.0 },    new[] { 0.0376, 0.0347, 0.0347, 0.0 }, new[] { 0.0, 0.0, 0.0, 0.0 }, new[] { 1.0, 1.0, 1.0, 1.0 }),
+                S("highlands_100m_grass02",       8, 64, 12, 36, 1.0, 1.0,  0.319, 0.5, new[] { 0.549, 0.584, 0.541, 1.0 },    new[] { 0.2355, 0.2004, 0.148, 0.0 }, new[] { 0.0, 0.0, 0.0, 0.0 }, new[] { 1.0, 1.0, 1.0, 1.0 }),
+                S("highlands_100m_grass03",       8, 32, 12, 36, 1.0, 1.0,  0.534, 0.5, new[] { 0.528, 0.615, 0.702, 1.0 },    new[] { 0.0659, 0.0435, 0.0224, 0.0 }, new[] { 0.0, 0.0, 0.1, 0.0 }, new[] { 1.0, 1.0, 0.8, 1.0 }),
+                S("highlands_100m_mud02",         8, 40, 12, 36, 1.0, 1.0,  0.566, 0.5, new[] { 0.528, 0.615, 0.702, 1.0 },    new[] { 1.0, 1.0, 1.0, 0.0 }, new[] { 0.0, 0.0, 0.0, 0.0 }, new[] { 1.0, 1.0, 1.0, 1.0 }),
+                S("highlands_100m_sand02",       10, 32,  8, 36, 0.8, 0.8,  0.062, 0.5, new[] { 0.263, 0.204, 0.110, 1.0 },    new[] { 0.2506, 0.2134, 0.1388, 0.0 }, new[] { 0.0, 0.0, 0.0, 0.0 }, new[] { 1.0, 1.0, 1.0, 1.0 }),
+                S("highlands_100m_rock_cliff01", 12, 52, 10, 36, 1.0, 1.0,  0.164, 0.5, new[] { 0.6667, 0.5373, 0.5137, 1.0 }, new[] { 1.0, 1.0, 1.0, 0.0 }, new[] { 0.0, 0.0, 0.0, 0.0 }, new[] { 1.0, 1.0, 1.0, 1.0 }),
+                S("highlands_60m_gravel01",      12, 52, 10, 36, 1.0, 1.0,  0.164, 0.5, new[] { 0.62, 0.58, 0.53, 1.0 },       new[] { 1.0, 1.0, 1.0, 0.0 }, new[] { 0.0, 0.0, 0.0, 0.0 }, new[] { 1.0, 1.0, 1.0, 1.0 }),
+            };
+
+            static JObj T(double x, double y, double z) => Json.Obj(
+                ("position", Json.Vec3(x, y, z)),
+                ("rotation", Json.Quat(0.0, 0.0, 0.0, 1.0)),
+                ("scale", Json.Vec3(0.0, 0.0, 0.0)));
+
+            var spawnT = new JObj();
+            foreach (var sp in spawns)
+                spawnT.Add(sp.Army, T(sp.X, Math.Round(MapGen.HeightAtWorld((float)sp.X, (float)sp.Z), 2), sp.Z));
+
+            var alloyT = new JObj();
+            i = 0;
+            foreach (var p in alloyPts)
+            {
+                i++;
+                double y = Math.Round(MapGen.HeightAtWorld((float)p[0], (float)p[1]), 2);
+                alloyT.Add(string.Format("Alloys_{0:D3}", i), T(p[0], y, p[1]));
+            }
+
+            static JObj Army() => Json.Obj(("faction", 0), ("alloys", 500.0), ("energy", 500.0), ("groups", Json.Obj()));
+
+            var map = Json.Obj(
+                ("fileVersion", 3),
+                ("mapVersion", 1),
+                ("name", mapName),
+                ("credits", ""),
+                ("width", size),
+                ("length", size),
+                ("height", 128),
+                ("heightmapResolution", MapGen.HRes),
+                ("hasWater", true),
+                ("waterLevel", (double)MapGen.WaterLevel),
+                ("waterDepth", 2.0),
+                ("waterWindSpeed", 0.06),
+                ("waterWindDirection", 100.0),
+                ("waterShoreDepthOffset", 8.0),
+                ("waterShoreDepthStrength", 0.7),
+                ("waterShoreDistanceOffset", 0.0),
+                ("waterShoreDistanceStrength", 2.0),
+                ("waveGeneratorBlueprint", ""),
+                ("shader", "RTS/TerrainLit"),
+                ("heightTransition", 2.0),
+                ("fadeDistance", 55.0),
+                ("fadeStartDistance", 32.0),
+                ("stratumLayers", stratums),
+
+                ("sunRA", 96.2),
+                ("sunDA", 32.0),
+                ("sunIntensity", 60000.0),
+                ("sunTint", Json.Rgba(1.0, 1.0, 1.0, 1.0)),
+                ("sunTemperature", 9200.0),
+                ("sunAngularDiameter", 0.5),
+                ("sunVolumetricsMultiplier", 6.7),
+                ("sunVolumetricsShadowDimer", 0.5),
+                ("skylightIntensity", 0.0),
+                ("skylightTint", Json.Rgba(1.0, 1.0, 1.0, 1.0)),
+                ("skylightTemperature", 12000.0),
+                ("exposure", 11.5),
+                ("exposureCompensation", 0.0),
+                ("skyboxExposure", 12.0),
+                ("fogAttenuationDistance", 330.0),
+                ("fogBaseHeight", 5.41),
+                ("fogMaximumHeight", 140.0),
+                ("fogMaximumDistance", 1800.0),
+                ("fogAnisotropy", 0.0),
+                ("skybox", Json.Obj(("path", "Environment/Skybox/kloofendal_48d_partly_cloudy_puresky_4k.exr"))),
+
+                ("areas", Json.Obj(("Playable", Json.Obj(
+                    ("x", 0.0), ("y", 0.0), ("width", (double)size), ("height", (double)size))))),
+                ("armies", Json.Obj(("ARMY_1", Army()), ("ARMY_2", Army()))),
+                ("chains", Json.Obj()),
+                ("markers", Json.Obj(
+                    ("Spawn", Json.Obj(("resource", false), ("transforms", spawnT))),
+                    ("Alloys", Json.Obj(("resource", true), ("transforms", alloyT))))),
+                ("decals", new List<JObj>()),
+                ("windSpeed", 0.25),
+                ("windDirection", 160.0),
+                ("props", propGroups));
+
+            // Fields the shipped maps set that SanMap would otherwise default
+            // badly - most importantly the height fog. (The PS called
+            // New-MapEnvironment 'Tropical'; AddEnvironment dropped the biome
+            // parameter because the fields do not vary by biome.)
+            Biome.AddEnvironment(map, (double)MapGen.WaterLevel);
+
+            string sanmap = Path.Combine(mapDir, folder + ".sanmap");
+            File.WriteAllText(sanmap, Json.Write(map), new UTF8Encoding(false));
+
+            log("");
+            // PS: & Test-Sanmap.ps1 -Path $sanmap -CheckTextures
+            if (validate != null) Validator.Check(sanmap, validate, log);
+            log("");
+            log($"Open: {sanmap}");
+            return mapDir;
+        }
+    }
+}

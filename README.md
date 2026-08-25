@@ -44,18 +44,18 @@ and will not notice changes underneath it.
 
 ## The app
 
-The converter also ships as a standalone Windows exe — no PowerShell, no
+The whole toolchain ships as one standalone Windows exe — no PowerShell, no
 .NET install, no setup:
 
 ```
-app/SanctuaryMapConverter/     .NET 8 WinForms port of Convert-ScMap.ps1
+app/SanctuaryMapConverter/     .NET 8 app: converter, generators, validator, deploy
 ```
 
 Build with `dotnet publish -c Release`, then copy `texturepack/` and
 `docs/texture-map.csv` into a `data/` folder next to the exe (that folder is
-the CC0 library, and everything in it is redistributable). The window
-auto-detects the Steam installs, lists every SupCom map it can find, and
-offers both texture modes:
+the CC0 library, and everything in it is redistributable). The window has two
+jobs — convert a Supreme Commander map, or generate a random one — and
+auto-detects the Steam installs. Conversion offers both texture modes:
 
 - **CC0 textures** — always available; uses the bundled data.
 - **Original FA textures** — only enabled when the app finds `env.scd` in
@@ -64,13 +64,26 @@ offers both texture modes:
   your machine.
 
 The same engine sources (`src/*.cs`) are compiled into the exe directly, and
-its output is byte-identical to the PowerShell pipeline's (verified per file
-against the game's own parsers, in both texture modes). Headless mode for
-scripting:
+every mode is golden-mastered against the PowerShell pipeline: identical
+binaries byte for byte, semantically identical JSON, and the game's own
+parsers (Newtonsoft into `EM.Map.SanMap`, plus the engine's `json.lua` via
+KeraLua) accept the output. Headless verbs for scripting:
 
 ```
 SanctuaryMapConverter.exe --convert "C:\...\Maps\SCMP_009" --cc0
+SanctuaryMapConverter.exe --generate --seed 4242 --size 512 --players 4 --style Mesas --biome Winter
+SanctuaryMapConverter.exe --named serpent | riverbreak | cleftwater | broken-mesa
+SanctuaryMapConverter.exe --flat --name "Blank Canvas" --size 512
+SanctuaryMapConverter.exe --validate "...\Maps\X\X.sanmap" --check-textures --lua
+SanctuaryMapConverter.exe --deploy-all
 ```
+
+The PowerShell scripts remain in the repo as the reference implementation the
+exe is golden-mastered against; the exe is the canonical toolchain. One
+behavioral note for anyone extending the app: PowerShell ran every script in
+a fresh process, so `MapGen`'s statics always started at compiled defaults —
+in-process the app restores that with `EngineState.Reset()` at the top of
+every run, and anything new that drives `MapGen` must do the same.
 
 ---
 

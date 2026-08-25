@@ -47,6 +47,8 @@ namespace SanctuaryMapConverter.Core
 
         public ConvertResult Run()
         {
+            EngineState.Reset();   // fresh MapGen statics, like a fresh PS process
+
             // ---- source --------------------------------------------------
             string scmapFile = Directory.EnumerateFiles(O.Source, "*.scmap").FirstOrDefault()
                 ?? throw new InvalidOperationException($"no .scmap in '{O.Source}'");
