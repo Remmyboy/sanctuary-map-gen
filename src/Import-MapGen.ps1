@@ -15,7 +15,7 @@
 $ErrorActionPreference = 'Stop'
 
 if (-not ('MapGen' -as [type])) {
-    $sources = 'MapGen.cs', 'PathedMesas.cs', 'Generator.cs', 'Resources.cs', 'Terrain.cs', 'ScMap.cs', 'ScMapProps.cs', 'ScMapTextures.cs', 'ScMapPropScan.cs', 'ScPropImport.cs', 'ScMapDecalScan.cs', 'ScMapSplat.cs', 'Bc7.cs', 'Dxt.cs', 'DdsMean.cs', 'DdsWrite.cs', 'Bc3.cs', 'DdsDecode.cs'
+    $sources = 'MapGen.cs', 'PathedMesas.cs', 'Generator.cs', 'Resources.cs', 'Terrain.cs', 'ScMap.cs', 'ScMapEnvironment.cs', 'ScMapProps.cs', 'ScMapTextures.cs', 'ScMapPropScan.cs', 'ScPropImport.cs', 'ScMapDecalScan.cs', 'ScMapSplat.cs', 'Bc7.cs', 'Dxt.cs', 'DdsMean.cs', 'DdsWrite.cs', 'Bc3.cs', 'DdsDecode.cs'
     $body = foreach ($cs in $sources) {
         $p = Join-Path $PSScriptRoot $cs
         if (-not (Test-Path $p)) { throw "missing source '$p'" }

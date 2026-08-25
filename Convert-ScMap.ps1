@@ -153,6 +153,13 @@ $spawns = $spawns | Sort-Object { [int]($_.Name -replace '\D', '') }
 "  markers: {0} spawns, {1} resource spots" -f $spawns.Count, $mexX.Count | Write-Host
 if ($spawns.Count -lt 2) { throw "only $($spawns.Count) spawn marker(s); not a skirmish map" }
 
+# The author's playable area, where one is defined, sane and respected by the
+# spawns - see ScPlayableArea for the guards.
+$playable = [MapGen]::ScPlayableArea($sc, [MapGen]::ReadScAreas($saveFile.FullName), $markers)
+if ($playable) {
+    "  playable area: {0:N0}x{1:N0} at ({2:N0}, {3:N0}) - the source insets its border" -f $playable[2], $playable[3], $playable[0], $playable[1] | Write-Host
+}
+
 # Do the terrain fold and the marker mapping agree? A mirrored import is
 # self-consistent everywhere else - reachability, slope, spawn placement all
 # look healthy - so this is the only cheap way to catch it.
@@ -277,6 +284,34 @@ if (-not $NoSourceTextures) {
             for ($i = 1; $i -le 8; $i++) {
                 if ($cov[$i] -le 0.0) { continue }
                 "    L{0} {1,-34} {2,5:p1}" -f $i, [IO.Path]::GetFileName($texSet.Paths[$i]), $cov[$i] | Write-Host
+            }
+
+            # The UpperStratum macro overlay, baked into tint_colors. Source
+            # mode only - the bake copies GPG pixels, and a CC0 build ships
+            # none. AdoptScMacro rejects the degenerate and the invisible.
+            if (-not $Cc0Textures -and $texSet.Paths[9]) {
+                $macroKey = $texSet.Paths[9].TrimStart('/')
+                $macroBytes = $null
+                if ($macroKey -match '^maps/') {
+                    $cand = Join-Path (Split-Path -Parent $scmapFile.Directory.FullName) ($macroKey.Substring(5) -replace '/', '\')
+                    if (Test-Path $cand) { $macroBytes = [IO.File]::ReadAllBytes($cand) }
+                }
+                elseif (Test-Path $ScdPath) {
+                    Add-Type -AssemblyName System.IO.Compression.FileSystem
+                    $zip = [IO.Compression.ZipFile]::OpenRead($ScdPath)
+                    try {
+                        $entry = $zip.Entries | Where-Object { $_.FullName.TrimStart('/') -ieq $macroKey } | Select-Object -First 1
+                        if ($entry) {
+                            $ms = New-Object IO.MemoryStream
+                            $es = $entry.Open(); $es.CopyTo($ms); $es.Dispose()
+                            $macroBytes = $ms.ToArray()
+                        }
+                    }
+                    finally { $zip.Dispose() }
+                }
+                if ($macroBytes -and [MapGen]::AdoptScMacro($macroBytes, [float]$texSet.Scales[9])) {
+                    "  macro overlay: {0} baked into the tint at {1:N0} m repeat" -f [IO.Path]::GetFileName($macroKey), $texSet.Scales[9] | Write-Host
+                }
             }
         }
     }
@@ -543,9 +578,17 @@ elseif ($Decals -and $Cc0Textures) {
 
 # ---- stratums ----
 
-# Lighting and fog still come from the biome; only the ground textures are the
-# source map's.
+# The biome is the lighting/fog base; the source map's own lighting overrides
+# the quantities that translate (sun direction, warmth, brightness, fog
+# thickness). Clamps live in the Sc* helpers in src\ScMapEnvironment.cs.
 $bio = Get-Biome $Biome
+$sunRA = 0.0; $sunDA = 0.0
+[MapGen]::ScSunAngles($sc, [ref]$sunRA, [ref]$sunDA)
+$sunTemp = [MapGen]::ScSunTemperature($sc)
+if ($sunTemp -lt 0) { $sunTemp = [double]$bio.SunTemp }
+$sunIntensity = [MapGen]::ScSunIntensity($sc)
+$fogAtt = [MapGen]::ScFogAttenuation($sc, [double]$bio.Fog)
+"  lighting: sun azimuth {0:N0} deg, altitude {1:N0} deg, {2:N0} K, {3:N0} lux, fog {4:N0} m ({5} biome base)" -f $sunRA, $sunDA, $sunTemp, $sunIntensity, $fogAtt, $Biome | Write-Host
 
 if ($srcTextures) {
     # Layer 0 is Sanctuary's base, showing wherever nothing is painted. Supreme
@@ -720,18 +763,22 @@ $map = [ordered]@{
     shader                   = 'RTS/TerrainLit'
     heightTransition         = 2.0; fadeDistance = 55.0; fadeStartDistance = 32.0
     stratumLayers            = $stratums
-    sunRA                    = [double]$bio.Sun; sunDA = 34.0; sunIntensity = 60000.0
+    sunRA                    = [double]$sunRA; sunDA = [double]$sunDA; sunIntensity = [double]$sunIntensity
     sunTint                  = @{ r = 1.0; g = 1.0; b = 1.0; a = 1.0 }
-    sunTemperature           = [double]$bio.SunTemp
+    sunTemperature           = [double]$sunTemp
     sunAngularDiameter       = 0.5; sunVolumetricsMultiplier = 6.7; sunVolumetricsShadowDimer = 0.5
     skylightIntensity        = 0.0
     skylightTint             = @{ r = 1.0; g = 1.0; b = 1.0; a = 1.0 }
     skylightTemperature      = [double]$bio.Sky
     exposure                 = [double]$bio.Exposure; exposureCompensation = 0.0; skyboxExposure = 12.0
-    fogAttenuationDistance   = [double]$bio.Fog
+    fogAttenuationDistance   = [double]$fogAtt
     fogBaseHeight            = 6.0; fogMaximumHeight = 140.0; fogMaximumDistance = 1800.0; fogAnisotropy = 0.0
     skybox                   = @{ path = 'Environment/Skybox/kloofendal_48d_partly_cloudy_puresky_4k.exr' }
-    areas                    = @{ Playable = @{ x = 0.0; y = 0.0; width = [double]$Size; height = [double]$Size } }
+    areas                    = @{ Playable = $(if ($playable) {
+                                   @{ x = [double]$playable[0]; y = [double]$playable[1]; width = [double]$playable[2]; height = [double]$playable[3] }
+                               } else {
+                                   @{ x = 0.0; y = 0.0; width = [double]$Size; height = [double]$Size }
+                               }) }
     armies                   = $armies
     chains                   = @{}
     markers                  = [ordered]@{

@@ -13,6 +13,7 @@ namespace SanctuaryMapConverter.Core
         public string TableCsv;                  // the solved substitution table
         public bool Cc0Textures;
         public string Name;                      // folder override; the map keeps its own display name
+        public string Biome = "Tropical";        // base for lighting/fog; the source's own lighting overrides what it can
         public string PropExtension = ".santp";
         public double VerticalScale = 1.0;
         public bool NoProps;
@@ -102,6 +103,12 @@ namespace SanctuaryMapConverter.Core
             }
             spawns = spawns.OrderBy(s => int.Parse(Regex.Replace(s.Name, "\\D", ""))).ToList();
             Log($"  markers: {spawns.Count} spawns, {mexX.Count} resource spots");
+
+            // The author's playable area, where one is defined, sane and
+            // respected by the spawns - see ScPlayableArea for the guards.
+            float[] playable = MapGen.ScPlayableArea(sc, MapGen.ReadScAreas(saveFile), markers);
+            if (playable != null)
+                Log($"  playable area: {playable[2]:N0}x{playable[3]:N0} at ({playable[0]:N0}, {playable[1]:N0}) - the source insets its border");
             if (spawns.Count < 2)
                 throw new InvalidOperationException($"only {spawns.Count} spawn marker(s); not a skirmish map");
 
@@ -192,6 +199,16 @@ namespace SanctuaryMapConverter.Core
             if (exp.Missing.Count > 0)
                 Log($"  textures not found: {string.Join(", ", exp.Missing.Take(3))}");
 
+            // The UpperStratum macro overlay, baked into tint_colors. Source
+            // mode only - the bake copies GPG pixels, and a CC0 build ships
+            // none. AdoptScMacro rejects the degenerate and the invisible.
+            if (!O.Cc0Textures && !string.IsNullOrEmpty(texSet.Paths[9]))
+            {
+                byte[] mb = TextureExport.ReadSourceBytes(O.ScdPath, texSet.Paths[9], Path.GetDirectoryName(O.Source));
+                if (mb != null && MapGen.AdoptScMacro(mb, texSet.Scales[9]))
+                    Log($"  macro overlay: {Path.GetFileName(texSet.Paths[9])} baked into the tint at {texSet.Scales[9]:N0} m repeat");
+            }
+
             MapGen.WriteHeightmap(Path.Combine(texDir, "heightmap.raw"));
             MapGen.WritePreview(Path.Combine(texDir, "preview.png"), 512, false, null, null, null);
             File.Copy(Path.Combine(texDir, "preview.png"), Path.Combine(mapDir, "preview.png"), true);
@@ -254,7 +271,16 @@ namespace SanctuaryMapConverter.Core
             var stratums = BuildStratums(texSet, exp);
 
             // ---- json ----------------------------------------------------
-            var bio = Biome.Get("Tropical");
+            // The biome is the base; the source's own lighting overrides the
+            // quantities that translate (sun direction, warmth, brightness,
+            // fog thickness). Clamps live in the Sc* helpers.
+            var bio = Biome.Get(O.Biome);
+            MapGen.ScSunAngles(sc, out double sunRA, out double sunDA);
+            double sunTemp = MapGen.ScSunTemperature(sc);
+            if (sunTemp < 0) sunTemp = bio.SunTemp;
+            double sunIntensity = MapGen.ScSunIntensity(sc);
+            double fogAtt = MapGen.ScFogAttenuation(sc, bio.Fog);
+            Log($"  lighting: sun azimuth {sunRA:N0}°, altitude {sunDA:N0}°, {sunTemp:N0} K, {sunIntensity:N0} lux, fog {fogAtt:N0} m ({bio.Name} biome base)");
             var spawnT = new JObj();
             var armies = new JObj();
             for (int i = 0; i < spawns.Count; i++)
@@ -290,18 +316,21 @@ namespace SanctuaryMapConverter.Core
                 ("shader", "RTS/TerrainLit"),
                 ("heightTransition", 2.0), ("fadeDistance", 55.0), ("fadeStartDistance", 32.0),
                 ("stratumLayers", stratums),
-                ("sunRA", bio.SunRA), ("sunDA", 34.0), ("sunIntensity", 60000.0),
+                ("sunRA", sunRA), ("sunDA", sunDA), ("sunIntensity", sunIntensity),
                 ("sunTint", Json.Rgba(1.0, 1.0, 1.0, 1.0)),
-                ("sunTemperature", bio.SunTemp),
+                ("sunTemperature", sunTemp),
                 ("sunAngularDiameter", 0.5), ("sunVolumetricsMultiplier", 6.7), ("sunVolumetricsShadowDimer", 0.5),
                 ("skylightIntensity", 0.0),
                 ("skylightTint", Json.Rgba(1.0, 1.0, 1.0, 1.0)),
                 ("skylightTemperature", bio.Sky),
                 ("exposure", bio.Exposure), ("exposureCompensation", 0.0), ("skyboxExposure", 12.0),
-                ("fogAttenuationDistance", bio.Fog),
+                ("fogAttenuationDistance", fogAtt),
                 ("fogBaseHeight", 6.0), ("fogMaximumHeight", 140.0), ("fogMaximumDistance", 1800.0), ("fogAnisotropy", 0.0),
                 ("skybox", Json.Obj(("path", "Environment/Skybox/kloofendal_48d_partly_cloudy_puresky_4k.exr"))),
-                ("areas", Json.Obj(("Playable", Json.Obj(("x", 0.0), ("y", 0.0), ("width", (double)size), ("height", (double)size))))),
+                ("areas", Json.Obj(("Playable", playable != null
+                    ? Json.Obj(("x", (double)playable[0]), ("y", (double)playable[1]),
+                               ("width", (double)playable[2]), ("height", (double)playable[3]))
+                    : Json.Obj(("x", 0.0), ("y", 0.0), ("width", (double)size), ("height", (double)size))))),
                 ("armies", armies),
                 ("chains", Json.Obj()),
                 ("markers", Json.Obj(

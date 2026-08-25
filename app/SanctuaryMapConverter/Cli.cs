@@ -6,7 +6,7 @@ namespace SanctuaryMapConverter
     // a terminal. This is what the golden-master tests use to prove the port
     // against the PowerShell pipeline.
     //
-    //   SanctuaryMapConverter --convert <sourceFolder> [--cc0] [--name X]
+    //   SanctuaryMapConverter --convert <sourceFolder> [--cc0] [--biome B] [--name X]
     //       [--out <mapsRoot>] [--deploy] [--prop-ext .santp|.sanprop] [--no-props]
     //   SanctuaryMapConverter --generate [--seed N] [--size 512] [--players 2]
     //       [--style S] [--biome B] [--count N] [--name X] [--out dir]
@@ -126,6 +126,7 @@ namespace SanctuaryMapConverter
                 switch (args[i])
                 {
                     case "--cc0": o.Cc0Textures = true; break;
+                    case "--biome": o.Biome = args[++i]; break;
                     case "--name": o.Name = args[++i]; break;
                     case "--out": o.OutputMapsRoot = args[++i]; break;
                     case "--deploy": deploy = true; break;

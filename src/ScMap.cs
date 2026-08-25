@@ -30,6 +30,17 @@ public static partial class MapGen
         public string TerrainShader = "";
         public bool   RowZeroIsNorth = true;   // resolved against the markers
 
+        // The lighting block, verbatim. SunDirection points toward the sun in
+        // SupCom's frame (y up, z southward); colors are linear RGB, usually
+        // above 1.0 because lightingMultiplier is baked into the artist's
+        // values on some maps and not others.
+        public float  LightingMultiplier = 1.5f;
+        public float[] SunDirection  = { 0.41f, 0.82f, 0.41f };
+        public float[] SunAmbience   = { 0.5f, 0.5f, 0.5f };
+        public float[] SunColor      = { 1f, 1f, 1f };
+        public float[] FogColor      = { 0.8f, 0.8f, 0.8f };
+        public float  FogStart, FogEnd;
+
         /// Byte offset just past the water block, so the rest of the file can
         /// be walked without re-parsing what came before.
         public int    AfterWaterOffset;
@@ -151,16 +162,16 @@ public static partial class MapGen
             RdStrZ(b, ref p);                       // one environment cubemap, uncounted
         }
 
-        p += 4;          // lightingMultiplier
-        p += 12;         // sunDirection
-        p += 12;         // sunAmbience
-        p += 12;         // sunColor
+        m.LightingMultiplier = RdF32(b, ref p);
+        for (int i = 0; i < 3; i++) m.SunDirection[i] = RdF32(b, ref p);
+        for (int i = 0; i < 3; i++) m.SunAmbience[i]  = RdF32(b, ref p);
+        for (int i = 0; i < 3; i++) m.SunColor[i]     = RdF32(b, ref p);
         p += 12;         // shadowFillColor
         p += 16;         // specularColor
         p += 4;          // bloom
-        p += 12;         // fogColor
-        p += 4;          // fogStart
-        p += 4;          // fogEnd
+        for (int i = 0; i < 3; i++) m.FogColor[i]     = RdF32(b, ref p);
+        m.FogStart = RdF32(b, ref p);
+        m.FogEnd   = RdF32(b, ref p);
 
         m.HasWater            = RdU8(b, ref p) != 0;
         m.WaterElevation      = RdF32(b, ref p);

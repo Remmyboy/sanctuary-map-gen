@@ -14,6 +14,7 @@ namespace SanctuaryMapConverter.Gui
         readonly ComboBox _mapPicker = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 430 };
         readonly RadioButton _modeFa = new() { Text = "Original FA textures (local play only)", AutoSize = true };
         readonly RadioButton _modeCc0 = new() { Text = "CC0 textures (shareable)", AutoSize = true, Checked = true };
+        readonly ComboBox _convBiome = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
         readonly Button _convert = new() { Text = "Convert", Width = 120, Height = 32 };
 
         // -- generate --
@@ -67,6 +68,11 @@ namespace SanctuaryMapConverter.Gui
             ct.Controls.Add(modes);
             ct.Controls.Add(_convert);
             _convert.Anchor = AnchorStyles.Right;
+            // The biome is the lighting/fog base; the source map's own sun and
+            // fog override what translates.
+            _convBiome.Items.AddRange(new object[] { "Tropical", "Highlands", "Winter", "Evergreen", "Arid" });
+            _convBiome.SelectedIndex = 0;
+            AddRow(ct, "Lighting biome", _convBiome, new Label());
             convertBox.Controls.Add(ct);
 
             var genBox = new GroupBox { Text = "Generate a random map", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(10) };
@@ -199,6 +205,7 @@ namespace SanctuaryMapConverter.Gui
             {
                 Source = source,
                 Cc0Textures = cc0,
+                Biome = (string)_convBiome.SelectedItem,
                 ScdPath = _faPath.Text.Length > 0 ? GamePaths.ScdPath(_faPath.Text) : null,
                 PackDir = _packDir,
                 TableCsv = _tableCsv,

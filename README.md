@@ -97,11 +97,29 @@ Everything the source map is, short of decals:
 | water | level copied; depth from the source's own deep-water elevation |
 | Mass / Hydrocarbon markers | alloy spots |
 | `ARMY_n` markers | spawns, one army each |
+| playable area | the author's `AREA_1` rectangle, guarded (see below) |
+| lighting | sun azimuth/altitude, warmth, brightness and fog thickness from the source's lighting block, clamped to the shipped ranges; the biome (`-Biome`, default Tropical) fills in the rest |
 | stratum textures | carried (default) or substituted with CC0 (option) |
 | splat weights | the author's own masks, resampled to `heightmapResolution` |
 | normal maps | the author's true normal **per layer** |
+| macro overlay | the UpperStratum macrotexture, baked into `tint_colors` at its own repeat (source-texture mode only — the bake copies GPG pixels) |
 | props | the author's placements — trees, groups, rocks — onto a biome-matched Sanctuary palette |
 | decals | parked; see below |
+
+**The playable area is adopted only when it can be trusted.** 28 of 299 corpus
+maps inset `AREA_1` to make an out-of-bounds border (bluelands, Dual Gap's dead
+bands). But adaptive_corona writes `RECTANGLE(0,0,0,0)` and final_rush defines
+a 50 m starting box that a script grows at run time, so a rectangle is adopted
+only if it is at least 16 m a side, covers ≥ 25% of the map, and contains every
+spawn. Anything else falls back to the full map.
+
+**Lighting crosses two renderers**, so only quantities with a physical meaning
+on both sides transfer: sun azimuth (which side of a ridge holds the shadow —
+z-negated with the terrain), altitude (clamped to the shipped 15–30° band),
+colour temperature from the sun colour's red/blue balance, intensity from
+`lightingMultiplier` × sun luminance against the corpus median, and fog
+attenuation from the source's fog band. `sunDA` incidentally now always sits
+inside the shipped range; the old fixed 34° was just outside it.
 
 **The heightmap is byte-exact.** SupCom stores uint16 at a height scale of
 1/128 on every map ever shipped; Sanctuary stores uint16 scaled by
@@ -246,6 +264,7 @@ src/    MapGen.cs         heightfield, stratum weights, file writers
         Resources.cs      alloy budget, base rings, expansion clusters
         Terrain.cs        route finding, clearance, chokepoints, overlook
         ScMap.cs          .scmap and _save.lua reader
+        ScMapEnvironment.cs  playable area, lighting adoption, macro-overlay bake
         ScMapTextures.cs  anchored texture-block scanner (10 albedos + 9 normals)
         ScMapSplat.cs     splat adoption, incl. DXT5-compressed masks
         ScMapPropScan.cs  self-locating prop-table scanner

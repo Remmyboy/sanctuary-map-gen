@@ -46,6 +46,29 @@ namespace SanctuaryMapConverter.Core
             File.WriteAllBytes(path, bytes);
         }
 
+        /// Raw bytes of one source texture, from the map's own folder for
+        /// /maps/ paths or from env.scd otherwise. Null when unavailable.
+        public static byte[] ReadSourceBytes(string scdPath, string sourcePath, string mapsRoot)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath)) return null;
+            string key = sourcePath.TrimStart('/');
+            if (mapsRoot != null && key.StartsWith("maps/", StringComparison.OrdinalIgnoreCase))
+            {
+                string cand = Path.Combine(mapsRoot, key.Substring(5).Replace('/', Path.DirectorySeparatorChar));
+                return File.Exists(cand) ? File.ReadAllBytes(cand) : null;
+            }
+            if (scdPath == null || !File.Exists(scdPath)) return null;
+            using var zip = ZipFile.OpenRead(scdPath);
+            foreach (var e in zip.Entries)
+            {
+                if (!e.FullName.TrimStart('/').Equals(key, StringComparison.OrdinalIgnoreCase)) continue;
+                using var ms = new MemoryStream();
+                using (var s = e.Open()) s.CopyTo(ms);
+                return ms.ToArray();
+            }
+            return null;
+        }
+
         /// Source-texture mode: extract each referenced texture from env.scd,
         /// or from the map's own folder for /maps/ paths. DXT3 - a format
         /// Unity cannot load - is transcoded to DXT5 with the colour block

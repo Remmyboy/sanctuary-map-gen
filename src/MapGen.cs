@@ -1252,10 +1252,23 @@ public static partial class MapGen
                     float lift = rel * 0.07f;
 
                     float t = Clamp01(0.5f + wash + lift);
-                    byte v = (byte)Math.Round(t * 255f);
 
                     int o = x * 4;
-                    row[o] = v; row[o + 1] = v; row[o + 2] = v; row[o + 3] = 127;
+                    if (MacroBgra != null)
+                    {
+                        // A converted map's own macro overlay, multiplied over
+                        // the wash - the author's variation on top of ours.
+                        SampleMacro(wx, wz, out float fb, out float fg, out float fr);
+                        row[o]     = (byte)Math.Round(Clamp01(t * fb) * 255f);
+                        row[o + 1] = (byte)Math.Round(Clamp01(t * fg) * 255f);
+                        row[o + 2] = (byte)Math.Round(Clamp01(t * fr) * 255f);
+                    }
+                    else
+                    {
+                        byte v = (byte)Math.Round(t * 255f);
+                        row[o] = v; row[o + 1] = v; row[o + 2] = v;
+                    }
+                    row[o + 3] = 127;
                 }
                 fs.Write(row, 0, row.Length);
             }
