@@ -1239,6 +1239,7 @@ public static partial class MapGen
                 for (int x = 0; x < res; x++)
                 {
                     float wx = (x + 0.5f) * px, wz = MapSize - (y + 0.5f) * px;
+                    float h = Sample(Height, wx, wz);
 
                     // Two octaves of wash at very different scales: a broad one
                     // that varies across the map, a finer one that breaks it up.
@@ -1248,26 +1249,58 @@ public static partial class MapGen
 
                     // A little more light on high ground, a little less in the
                     // hollows.
-                    float rel = Clamp01((Sample(Height, wx, wz) - lo) / span) - 0.5f;
+                    float rel = Clamp01((h - lo) / span) - 0.5f;
                     float lift = rel * 0.07f;
 
-                    float t = Clamp01(0.5f + wash + lift);
+                    // Material mottle, weighted by what the splat actually
+                    // shows at this texel: each layer's visible share after
+                    // sequential compositing scales its role's amplitude, so
+                    // grass mottles, sand bands warm, rock stays clean. Fixed
+                    // metre scales, not map-relative - a patch of grass has
+                    // the same grain on a 256 as on a 1024.
+                    float lumAmp = TintNoiseLum[0], warmAmp = TintNoiseWarm[0];
+                    if (Layers != null && Layers[1] != null)
+                    {
+                        int sr = Math.Min(SRes - 1, (int)((MapSize - wz) / MapSize * SRes));
+                        int sc = Math.Min(SRes - 1, (int)(wx / MapSize * SRes));
+                        float rem = 1f;
+                        lumAmp = 0f; warmAmp = 0f;
+                        for (int L = 8; L >= 1; L--)
+                        {
+                            float w = Layers[L][sr, sc] / 255f;
+                            lumAmp += w * rem * TintNoiseLum[L];
+                            warmAmp += w * rem * TintNoiseWarm[L];
+                            rem *= 1f - w;
+                        }
+                        lumAmp += rem * TintNoiseLum[0];
+                        warmAmp += rem * TintNoiseWarm[0];
+                    }
+                    float mat = (Fbm(wx, wz, 5171, 3, 28f) - 0.5f) * 0.7f
+                              + (Fbm(wx, wz, 9319, 2, 9f) - 0.5f) * 0.3f;
+                    float warm = (Fbm(wx, wz, 12907, 2, 44f) - 0.5f) * warmAmp;
 
-                    int o = x * 4;
+                    float t = Clamp01(0.5f + wash + lift + mat * lumAmp);
+
+                    // Wet ground by the water: darker, fading out 2.5 m above
+                    // the waterline. Height above water rather than horizontal
+                    // distance, so a beach gets a wide damp band and a cliff
+                    // plunging into the sea a thin one.
+                    float wet = WaterLevel > 0f ? 1f - Clamp01((h - WaterLevel) / 2.5f) : 0f;
+                    float wetMul = 1f - 0.13f * wet;
+
+                    float fr = (1f + warm) * wetMul, fg = wetMul, fb = (1f - warm) * wetMul;
                     if (MacroBgra != null)
                     {
                         // A converted map's own macro overlay, multiplied over
                         // the wash - the author's variation on top of ours.
-                        SampleMacro(wx, wz, out float fb, out float fg, out float fr);
-                        row[o]     = (byte)Math.Round(Clamp01(t * fb) * 255f);
-                        row[o + 1] = (byte)Math.Round(Clamp01(t * fg) * 255f);
-                        row[o + 2] = (byte)Math.Round(Clamp01(t * fr) * 255f);
+                        SampleMacro(wx, wz, out float mb, out float mg, out float mr);
+                        fb *= mb; fg *= mg; fr *= mr;
                     }
-                    else
-                    {
-                        byte v = (byte)Math.Round(t * 255f);
-                        row[o] = v; row[o + 1] = v; row[o + 2] = v;
-                    }
+
+                    int o = x * 4;
+                    row[o]     = (byte)Math.Round(Clamp01(t * fb) * 255f);
+                    row[o + 1] = (byte)Math.Round(Clamp01(t * fg) * 255f);
+                    row[o + 2] = (byte)Math.Round(Clamp01(t * fr) * 255f);
                     row[o + 3] = 127;
                 }
                 fs.Write(row, 0, row.Length);

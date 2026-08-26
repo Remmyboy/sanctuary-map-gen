@@ -103,6 +103,7 @@ Everything the source map is, short of decals:
 | splat weights | the author's own masks, resampled to `heightmapResolution` |
 | normal maps | the author's true normal **per layer** |
 | macro overlay | the UpperStratum macrotexture, baked into `tint_colors` at its own repeat (source-texture mode only — the bake copies GPG pixels) |
+| mask maps | per-role smoothness in source mode — mud glistens, rock sheds light, grass stays matte (CC0 mode already carries each material's real mask) |
 | props | the author's placements — trees, groups, rocks — onto a biome-matched Sanctuary palette |
 | decals | parked; see below |
 
@@ -120,6 +121,19 @@ colour temperature from the sun colour's red/blue balance, intensity from
 `lightingMultiplier` × sun luminance against the corpus median, and fog
 attenuation from the source's fog band. `sunDA` incidentally now always sits
 inside the shipped range; the old fixed 34° was just outside it.
+
+**The tint carries material-aware detail** — on every map, converted or
+generated. `tint_colors` gets noise weighted by each layer's visible splat
+share and its role: vegetation mottles (with a warm–cool hue tilt), sand bands
+warm, mud darkens in patches, rock stays nearly clean. Roles come from texture
+names, the same signal the CC0 substitution table was built from; noise scales
+are fixed metres, so grain is the same physical size on a 256 as on a 1024.
+Ground within 2.5 m of the waterline also darkens up to 13% — height above
+water rather than horizontal distance, so a beach gets a wide damp band and a
+sea cliff a thin one. Splat weights are layout data, not GPG pixels, so all of
+this is CC0-clean and serves as the CC0 stand-in for the macro overlay that
+legally cannot be baked there. Amplitudes are deliberately subtle: The_Forge's
+hand-made tint is the reference for how much variation a shipped map carries.
 
 **The heightmap is byte-exact.** SupCom stores uint16 at a height scale of
 1/128 on every map ever shipped; Sanctuary stores uint16 scaled by

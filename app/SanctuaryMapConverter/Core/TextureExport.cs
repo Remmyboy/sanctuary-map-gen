@@ -128,6 +128,19 @@ namespace SanctuaryMapConverter.Core
                 if (!File.Exists(outPath)) { File.WriteAllBytes(outPath, bytes); r.Copied++; }
             }
 
+            // Per-role neutral masks: the same flat neutral in metallic, AO
+            // and detail, the role's own smoothness in alpha - mud glistens,
+            // grass does not. Unused slots keep the shared fallback below.
+            foreach (var p in texturePaths ?? Array.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(p) || !r.Names.ContainsKey(p)) continue;
+                string role = MapGen.ScTextureRole(p);
+                string maskFile = $"sc_mask_{role}.tga";
+                string maskPath = Path.Combine(destDir, maskFile);
+                if (!File.Exists(maskPath)) MapGen.WriteMaskTga(maskPath, MapGen.RoleSmoothness(role));
+                r.Masks[p] = maskFile;
+            }
+
             WriteNeutralMask(Path.Combine(destDir, r.MaskName));
             return r;
         }

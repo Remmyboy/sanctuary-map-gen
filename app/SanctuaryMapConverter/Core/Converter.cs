@@ -179,6 +179,7 @@ namespace SanctuaryMapConverter.Core
             if (texSet == null || !MapGen.AdoptScSplat(scBytes, texSet))
                 throw new InvalidOperationException(
                     "the texture block could not be scanned - this is one of the two known pre-Forged Alliance format maps, which are not supported");
+            MapGen.SetTintNoiseFromScTextures(texSet);
 
             ExportResult exp;
             if (O.Cc0Textures)

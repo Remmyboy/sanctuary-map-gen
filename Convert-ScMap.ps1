@@ -266,6 +266,7 @@ if (-not $NoSourceTextures) {
     $scBytes = [IO.File]::ReadAllBytes($scmapFile.FullName)
     $texSet = [MapGen]::ScanScTextures($scBytes, $sc.Size)
     if ($texSet -and [MapGen]::AdoptScSplat($scBytes, $texSet)) {
+        [MapGen]::SetTintNoiseFromScTextures($texSet)
         $exp = if ($Cc0Textures) {
             & (Join-Path $here 'tools\Export-Cc0Textures.ps1') `
                 -TexturePaths $texSet.Paths -DestDir $texDir -Quiet

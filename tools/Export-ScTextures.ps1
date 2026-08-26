@@ -110,6 +110,19 @@ try {
 }
 finally { $zip.Dispose() }
 
+# Per-role neutral masks: the same flat neutral in metallic, AO and detail,
+# the role's own smoothness in alpha - mud glistens, grass does not. Unused
+# slots keep the shared fallback below.
+$masks = @{}
+foreach ($p in $TexturePaths) {
+    if ([string]::IsNullOrWhiteSpace($p) -or -not $names.ContainsKey($p)) { continue }
+    $role = [MapGen]::ScTextureRole($p)
+    $maskFile = "sc_mask_$role.tga"
+    $maskOut = Join-Path $DestDir $maskFile
+    if (-not (Test-Path $maskOut)) { [MapGen]::WriteMaskTga($maskOut, [MapGen]::RoleSmoothness($role)) }
+    $masks[$p] = $maskFile
+}
+
 # A neutral mask. Sanctuary's stratum layers each name one and Supreme Commander
 # has nothing corresponding, so write one flat image and point every layer at
 # it. This used to be mid-grey, on the reasoning that the middle of an unknown
@@ -128,4 +141,4 @@ if (-not $Quiet) {
 
 # Leaf names keyed by original path, so the caller can build stratumLayers
 # without re-deriving them.
-[pscustomobject]@{ Copied = $copied; Missing = $missing; Names = $names; MaskName = $maskName; Transcoded = $transcoded }
+[pscustomobject]@{ Copied = $copied; Missing = $missing; Names = $names; Masks = $masks; MaskName = $maskName; Transcoded = $transcoded }

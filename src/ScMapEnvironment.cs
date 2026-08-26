@@ -142,6 +142,128 @@ public static partial class MapGen
         fr = Math.Clamp(1f + al * (r / 255f / 0.37f - 1f), 0.55f, 1.45f);
     }
 
+    // ---- layer roles -----------------------------------------------------
+
+    // A coarse material role per layer drives two things: how much tint noise
+    // a layer's ground gets (vegetation mottles, rock stays clean), and which
+    // smoothness its neutral mask carries in source-texture mode (mud
+    // glistens, grass does not). Classification is by file name, the same
+    // signal the CC0 substitution table was built from.
+
+    /// One of: veg, dirt, sand, mud, gravel, rock, snow. "dirt" is the safe
+    /// default for anything unrecognised - middle of the noise and smoothness
+    /// ranges both.
+    public static string ScTextureRole(string path)
+    {
+        string s = path ?? "";
+        int cut = s.LastIndexOfAny(new[] { '/', '\\' });
+        s = (cut >= 0 ? s.Substring(cut + 1) : s).ToLowerInvariant();
+        // Order matters: "sandstone" is rock, "groundrock" is rock,
+        // "iceRock" reads as rock before snow gets a look.
+        if (HasWord(s, "rock", "cliff", "basalt", "stone", "granite", "boulder", "lava")) return "rock";
+        if (HasWord(s, "snow", "ice", "frost")) return "snow";
+        if (HasWord(s, "sand", "beach", "dune")) return "sand";
+        if (HasWord(s, "mud", "marsh", "swamp", "silt", "bog")) return "mud";
+        if (HasWord(s, "gravel", "rubble", "shale", "pebble")) return "gravel";
+        if (HasWord(s, "grass", "moss", "heather", "foliage", "fern", "leaf", "leaves")) return "veg";
+        return "dirt";
+    }
+
+    static bool HasWord(string s, params string[] words)
+    {
+        foreach (var w in words) if (s.Contains(w)) return true;
+        return false;
+    }
+
+    /// Tint-noise luminance amplitude for a role. Vegetation and dirt mottle
+    /// visibly; rock and snow stay nearly clean - noise on rock reads as
+    /// dirty geometry rather than material variation.
+    public static float RoleNoiseLum(string role)
+    {
+        switch (role)
+        {
+            case "veg": return 0.09f;
+            case "dirt": return 0.07f;
+            case "mud": return 0.06f;
+            case "sand": case "gravel": return 0.05f;
+            case "snow": return 0.04f;
+            default: return 0.03f;               // rock
+        }
+    }
+
+    /// Warm-cool tint amplitude for a role - the hue half of the mottle.
+    public static float RoleNoiseWarm(string role)
+    {
+        switch (role)
+        {
+            case "veg": return 0.05f;
+            case "dirt": case "sand": return 0.04f;
+            case "mud": case "gravel": return 0.02f;
+            default: return 0.01f;               // rock, snow
+        }
+    }
+
+    /// Mask-map smoothness for a role, banded around the shipped mean of 36 -
+    /// the dial with the wet-plastic history, so nothing here strays far.
+    public static byte RoleSmoothness(string role)
+    {
+        switch (role)
+        {
+            case "mud": return 55;
+            case "snow": return 50;
+            case "rock": return 45;
+            case "gravel": return 38;
+            case "sand": return 30;
+            case "dirt": return 27;
+            default: return 24;                  // veg
+        }
+    }
+
+    /// A 4x4 flat mask-map TGA: metallic 0, AO 219, detail 150 - the shipped
+    /// means - and the given smoothness. Written by both texture exporters so
+    /// the two pipelines produce identical bytes.
+    public static void WriteMaskTga(string path, byte smoothness)
+    {
+        const int res = 4;
+        var bytes = new byte[18 + res * res * 4];
+        bytes[2] = 2;                            // uncompressed true-colour
+        bytes[12] = res; bytes[14] = res;
+        bytes[16] = 32;                          // bits per pixel
+        bytes[17] = 0x28;                        // 8 alpha bits, top-left origin
+        for (int i = 18; i < bytes.Length; i += 4)
+        {
+            bytes[i] = 150;                      // B - detail
+            bytes[i + 1] = 219;                  // G - ambient occlusion
+            bytes[i + 2] = 0;                    // R - metallic
+            bytes[i + 3] = smoothness;
+        }
+        File.WriteAllBytes(path, bytes);
+    }
+
+    // ---- tint noise ------------------------------------------------------
+
+    // Per-layer amplitudes read by WriteTintColors, index 0..8. The defaults
+    // follow the generated maps' fixed slot meanings (0 base, 1 cliff,
+    // 2-4 vegetation and variation, 5 mud, 6 sand, 7 rock, 8 gravel);
+    // converted maps overwrite them with their own layers' roles.
+    public static float[] TintNoiseLum  = { 0.09f, 0.03f, 0.09f, 0.09f, 0.07f, 0.06f, 0.05f, 0.03f, 0.05f };
+    public static float[] TintNoiseWarm = { 0.05f, 0.01f, 0.05f, 0.05f, 0.04f, 0.02f, 0.04f, 0.01f, 0.02f };
+
+    /// Point the tint noise at an imported map's actual layer roles. An
+    /// unused slot gets zero - its weight is zeroed anyway, but a zero here
+    /// keeps the base-layer fallback it points at from mottling twice.
+    public static void SetTintNoiseFromScTextures(ScTextureSet set)
+    {
+        for (int i = 0; i <= 8; i++)
+        {
+            string p = set.Paths[i];
+            if (string.IsNullOrEmpty(p)) { TintNoiseLum[i] = 0f; TintNoiseWarm[i] = 0f; continue; }
+            string role = ScTextureRole(p);
+            TintNoiseLum[i] = RoleNoiseLum(role);
+            TintNoiseWarm[i] = RoleNoiseWarm(role);
+        }
+    }
+
     // ---- lighting --------------------------------------------------------
 
     /// Sun azimuth (sunRA) and altitude (sunDA) in degrees, from the source's
