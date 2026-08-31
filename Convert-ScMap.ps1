@@ -760,7 +760,6 @@ $map = [ordered]@{
     waterWindSpeed = 0.06; waterWindDirection = 100.0
     waterShoreDepthOffset    = 8.0; waterShoreDepthStrength = 0.7
     waterShoreDistanceOffset = 0.0; waterShoreDistanceStrength = 2.0
-    waveGeneratorBlueprint   = ''
     shader                   = 'RTS/TerrainLit'
     heightTransition         = 2.0; fadeDistance = 55.0; fadeStartDistance = 32.0
     stratumLayers            = $stratums

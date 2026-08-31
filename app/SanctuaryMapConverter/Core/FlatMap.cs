@@ -262,7 +262,6 @@ namespace SanctuaryMapConverter.Core
                 ("waterShoreDepthStrength", 0.7),
                 ("waterShoreDistanceOffset", 0.0),
                 ("waterShoreDistanceStrength", 2.0),
-                ("waveGeneratorBlueprint", ""),
                 ("shader", "RTS/TerrainLit"),
                 ("heightTransition", 2.0),
                 ("fadeDistance", 128.0),
