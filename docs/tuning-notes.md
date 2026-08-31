@@ -86,3 +86,4 @@ Inherited, documented here so the list is in one place:
 | `windDirection` | 160 (shipped: 100) | same | same |
 | `waterDepth` clamp | 1–8 m | same | source deep-water elevation, clamped |
 | Prop scale clamp | 0.5–2.0, tree groups ×1.35 | Converter props section | tree-group size is one number standing in for a whole mesh |
+| `-MaxProps` | 20000 | ConvertOptions / Convert-ScMap.ps1 | every placed prop is natively harvestable (5 alloys + 20 plasma each, from the shipped blueprints), so thinning the densest maps also trims their total reclaim, not just their looks |
