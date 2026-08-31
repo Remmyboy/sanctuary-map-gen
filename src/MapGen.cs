@@ -1324,10 +1324,15 @@ public static partial class MapGen
     }
 
     // ---- preview -------------------------------------------------------
-    // Approximate albedo of each stratum layer, for the preview only.
-    //          idx 0 unused, then 1..8
-    static readonly float[,] LayerCol = {
-        { 0.00f, 0.00f, 0.00f },   // (unused)
+    // Approximate albedo of each stratum layer, for the preview only. Index 0
+    // is the base that shows where nothing is painted, 1..8 the masked strata.
+    //
+    // These are the generator's own biome set. A converted map paints with the
+    // author's textures instead, so the converter overwrites this from the
+    // files it exported - see SetPreviewLayerColors. Left as-is a desert map
+    // previews as green highland, which is what the map list actually showed.
+    public static float[,] LayerCol = {
+        { 0.28f, 0.40f, 0.19f },   // 0 base (grass07)
         { 0.36f, 0.34f, 0.33f },   // 1 rock_basalt01 (cliff faces)
         { 0.42f, 0.34f, 0.24f },   // 2 heather03
         { 0.48f, 0.53f, 0.27f },   // 3 grass02
@@ -1337,6 +1342,57 @@ public static partial class MapGen
         { 0.53f, 0.50f, 0.47f },   // 7 rock_cliff03
         { 0.64f, 0.61f, 0.56f },   // 8 gravel01
     };
+
+    /// Mean luminance the preview aims for across the layers it draws.
+    /// Measured off the table above, which is what every preview looked like
+    /// before the textures were read.
+    const float PreviewTargetLuma = 0.42f;
+
+    /// Point the preview at a map's own ground textures.
+    ///
+    /// `files[i]` is the exported albedo for layer i (null where the map
+    /// leaves a layer unused), `remaps[i]` its diffuseRemap. The game renders
+    /// albedo x diffuseRemap, so the product is the honest colour - and in CC0
+    /// mode it is the point of the remap, which is solved so the substitute
+    /// renders the tone the original rendered.
+    ///
+    /// The product is dark in absolute terms (remaps run about 0.35) because
+    /// in game it is lit; the preview is not, so the whole set is scaled to
+    /// PreviewTargetLuma afterwards. That keeps every relationship between the
+    /// layers - which is what makes a preview recognisable - while landing the
+    /// image in the brightness band the old table sat in.
+    ///
+    /// Unreadable or missing files keep their built-in colour, so a partial
+    /// export degrades to the old behaviour one layer at a time.
+    public static void SetPreviewLayerColors(string[] files, double[][] remaps)
+    {
+        var col = new double[9][];
+        double sum = 0; int n = 0;
+        for (int i = 0; i <= 8; i++)
+        {
+            if (files == null || i >= files.Length || string.IsNullOrEmpty(files[i])) continue;
+            if (!File.Exists(files[i])) continue;
+            DdsInfo d;
+            try { d = ReadDdsInfo(File.ReadAllBytes(files[i])); } catch { continue; }
+            if (!d.Ok) continue;
+
+            double[] rm = remaps != null && i < remaps.Length && remaps[i] != null && remaps[i].Length >= 3
+                ? remaps[i] : new[] { 1.0, 1.0, 1.0 };
+            var c = new[] { d.R / 255.0 * rm[0], d.G / 255.0 * rm[1], d.B / 255.0 * rm[2] };
+            col[i] = c;
+            sum += 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+            n++;
+        }
+        if (n == 0) return;
+
+        double gain = PreviewTargetLuma / Math.Max(1e-4, sum / n);
+        for (int i = 0; i <= 8; i++)
+        {
+            if (col[i] == null) continue;
+            for (int k = 0; k < 3; k++)
+                LayerCol[i, k] = (float)Math.Min(1.0, col[i][k] * gain);
+        }
+    }
 
     public static void WritePreview(string path, int res, bool annotate,
                                     float[] markX, float[] markZ, int[] markKind)
@@ -1354,7 +1410,7 @@ public static partial class MapGen
             // terrain shader will actually blend, not a second set of rules.
             int sc = Math.Min(SRes - 1, (int)(x / MapSize * SRes));
             int sr = Math.Min(SRes - 1, (int)((MapSize - z) / MapSize * SRes));
-            rr = 0.28f; gg = 0.40f; bb = 0.19f;                       // layer 0, grass07
+            rr = LayerCol[0, 0]; gg = LayerCol[0, 1]; bb = LayerCol[0, 2];   // the base layer
             for (int L = 1; L <= 8; L++)
             {
                 float w = Layers[L][sr, sc] / 255f;

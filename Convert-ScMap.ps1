@@ -320,6 +320,23 @@ if (-not $NoSourceTextures) {
 }
 if (-not $srcTextures) { [MapGen]::BuildLayers() }
 
+# The preview draws the author's ground, not our biome's: mean colour of each
+# exported albedo, times the diffuseRemap the map will render it through. See
+# SetPreviewLayerColors.
+if ($srcTextures) {
+    $prevFiles = New-Object 'string[]' 9
+    $prevRemaps = New-Object 'double[][]' 9
+    for ($li = 0; $li -le 8; $li++) {
+        $sp = $srcTextures.Set.Paths[$li]
+        if (-not $sp -or -not $srcTextures.Export.Names.ContainsKey($sp)) { continue }
+        $prevFiles[$li] = Join-Path $texDir $srcTextures.Export.Names[$sp]
+        $prevRemaps[$li] = if ($srcTextures.Export.Remaps -and $srcTextures.Export.Remaps.ContainsKey($sp)) {
+            [double[]]$srcTextures.Export.Remaps[$sp]
+        } else { [double[]]@(0.37, 0.35, 0.32) }
+    }
+    [MapGen]::SetPreviewLayerColors($prevFiles, $prevRemaps)
+}
+
 [MapGen]::WriteHeightmap((Join-Path $texDir 'heightmap.raw'))
 [MapGen]::WriteStratums($texDir)
 [MapGen]::WriteTints($texDir, 2048)

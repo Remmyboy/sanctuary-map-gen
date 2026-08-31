@@ -210,6 +210,20 @@ namespace SanctuaryMapConverter.Core
                     Log($"  macro overlay: {Path.GetFileName(texSet.Paths[9])} baked into the tint at {texSet.Scales[9]:N0} m repeat");
             }
 
+            // The preview draws the author's ground, not our biome's: mean
+            // colour of each exported albedo, times the diffuseRemap the map
+            // will render it through. See SetPreviewLayerColors.
+            var prevFiles = new string[9];
+            var prevRemaps = new double[9][];
+            for (int li = 0; li <= 8; li++)
+            {
+                string sp = texSet.Paths[li];
+                if (string.IsNullOrEmpty(sp) || !exp.Names.TryGetValue(sp, out var leaf)) continue;
+                prevFiles[li] = Path.Combine(texDir, leaf);
+                prevRemaps[li] = exp.Remaps.TryGetValue(sp, out var rm) ? rm : new[] { 0.37, 0.35, 0.32 };
+            }
+            MapGen.SetPreviewLayerColors(prevFiles, prevRemaps);
+
             MapGen.WriteHeightmap(Path.Combine(texDir, "heightmap.raw"));
             MapGen.WritePreview(Path.Combine(texDir, "preview.png"), 512, false, null, null, null);
             File.Copy(Path.Combine(texDir, "preview.png"), Path.Combine(mapDir, "preview.png"), true);
