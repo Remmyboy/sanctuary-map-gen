@@ -66,6 +66,7 @@ history. Judge on Seton's mud flats vs its rock.
 | `ScWreckMinMass` | 30 (walls cost 2, a T1 tank 56) | reclaim fields feeling empty = corpus maps lean on mid-value debris just under it |
 | Size ladder | hitbox area ≤ 0.5 / 2.5 / 9 / 30 / else, aspect > 1.3 splits the two mid meshes | wrecks visually too big or small for what they were — judge on The_Dark_Heart's debris field |
 | Economy | every SSS wreck blueprint is worth 100 alloys / 10 s (dev placeholder values) | positions and silhouettes are faithful, per-wreck value is not — revisit when the devs tune their wreck blueprints or ship a wider set |
+| Harvesting itself | **not in the Playtest build** — harvest values and tags exist on every blueprint, but no command, system or Lua consumes them (verified by reflection: zero harvest/reclaim members across the gameplay assembly's 98 enums) | wrecks and props are visual and blocking only until the devs ship the mechanic; when they do, everything already placed lights up with no converter changes |
 
 ## Playable-area guards (`src/ScMapEnvironment.cs` ScPlayableArea)
 
@@ -86,4 +87,4 @@ Inherited, documented here so the list is in one place:
 | `windDirection` | 160 (shipped: 100) | same | same |
 | `waterDepth` clamp | 1–8 m | same | source deep-water elevation, clamped |
 | Prop scale clamp | 0.5–2.0, tree groups ×1.35 | Converter props section | tree-group size is one number standing in for a whole mesh |
-| `-MaxProps` | 20000 | ConvertOptions / Convert-ScMap.ps1 | every placed prop is natively harvestable (5 alloys + 20 plasma each, from the shipped blueprints), so thinning the densest maps also trims their total reclaim, not just their looks |
+| `-MaxProps` | 20000 | ConvertOptions / Convert-ScMap.ps1 | every placed prop carries harvest values (5 alloys + 20 plasma, from the shipped blueprints), so once the devs ship the harvest mechanic, thinning the densest maps also trims their total reclaim, not just their looks |
