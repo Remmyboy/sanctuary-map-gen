@@ -178,7 +178,7 @@ function New-Transform {
     [ordered]@{
         position = @{ x = $X;   y = $Y; z = $Z }
         rotation = @{ x = 0.0;  y = 0.0; z = 0.0; w = 1.0 }
-        scale    = @{ x = 0.0;  y = 0.0; z = 0.0 }
+        scale    = @{ x = 1.0;  y = 1.0; z = 1.0 }
     }
 }
 
@@ -218,7 +218,7 @@ function New-Army {
                         tpid     = $Tpid
                         position = @{ x = 0.0; y = 0.0; z = 0.0 }
                         rotation = @{ x = 0.0; y = 0.0; z = 0.0; w = 0.0 }
-                        scale    = @{ x = 0.0; y = 0.0; z = 0.0 }
+                        scale    = @{ x = 1.0; y = 1.0; z = 1.0 }
                     }
                 }
                 groups = @{}

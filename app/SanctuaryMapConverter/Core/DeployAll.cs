@@ -85,7 +85,7 @@ namespace SanctuaryMapConverter.Core
             // shipped was something absent or in the wrong format, and each
             // was a two-second check away.
             string gamedata = Path.Combine(sanctuaryInstall, "engine", "Sanctuary_Data", "Gamedata");
-            string managed = Path.Combine(sanctuaryInstall, "map-editor", "SanctuaryMapEditor_Data", "Managed");
+            string managed = GamePaths.ManagedDir(sanctuaryInstall);
             return DeployedCheck.Run(engineMaps, editorMaps, gamedata, managed, "~TEAM-1v1_Tropical_256_47940", log);
         }
 

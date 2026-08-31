@@ -243,7 +243,7 @@ namespace SanctuaryMapConverter.Gui
                 Force = true,
                 Validate = sanctuary.Length > 0 ? new ValidateOptions
                 {
-                    Managed = Path.Combine(sanctuary, "map-editor", "SanctuaryMapEditor_Data", "Managed"),
+                    Managed = GamePaths.ManagedDir(sanctuary),
                     CheckTextures = true,
                     LuaCheck = true,
                     GameRoot = sanctuary,

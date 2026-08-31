@@ -26,7 +26,7 @@
 param(
     [Parameter(Mandatory)]
     [string]$Source,
-    [string]$MapsRoot = 'F:\SteamLibrary\steamapps\common\Sanctuary Shattered Sun Demo\engine\Sanctuary_Data\Maps',
+    [string]$MapsRoot = 'C:\Program Files (x86)\Steam\steamapps\common\Sanctuary Shattered Sun Playtest\engine\Sanctuary_Data\Maps',
     [string]$Name,
     [ValidateSet('Highlands', 'Tropical', 'Winter', 'Evergreen', 'Arid')]
     [string]$Biome = 'Tropical',
@@ -716,7 +716,7 @@ function T([double]$X, [double]$Y, [double]$Z) {
     [ordered]@{
         position = @{ x = $X; y = $Y; z = $Z }
         rotation = @{ x = 0.0; y = 0.0; z = 0.0; w = 1.0 }
-        scale    = @{ x = 0.0; y = 0.0; z = 0.0 }
+        scale    = @{ x = 1.0; y = 1.0; z = 1.0 }
     }
 }
 

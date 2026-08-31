@@ -119,7 +119,7 @@ namespace SanctuaryMapConverter.Core
         static JObj NewTransform(double x, double y, double z) => Json.Obj(
             ("position", Json.Vec3(x, y, z)),
             ("rotation", Json.Quat(0.0, 0.0, 0.0, 1.0)),
-            ("scale", Json.Vec3(0.0, 0.0, 0.0)));
+            ("scale", Json.Vec3(1.0, 1.0, 1.0)));
 
         static JObj NewArmy(int faction, string tpid, string unitKey) => Json.Obj(
             ("faction", faction),
@@ -133,7 +133,7 @@ namespace SanctuaryMapConverter.Core
                             ("tpid", tpid),
                             ("position", Json.Vec3(0.0, 0.0, 0.0)),
                             ("rotation", Json.Quat(0.0, 0.0, 0.0, 0.0)),
-                            ("scale", Json.Vec3(0.0, 0.0, 0.0)))))),
+                            ("scale", Json.Vec3(1.0, 1.0, 1.0)))))),
                     ("groups", Json.Obj()))))));
 
         public static string Run(FlatMapOptions o, Action<string> log)

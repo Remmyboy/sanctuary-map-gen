@@ -361,7 +361,7 @@ namespace SanctuaryMapConverter.Core
         static JObj Transform(double x, double y, double z) => Json.Obj(
             ("position", Json.Vec3(x, y, z)),
             ("rotation", Json.Quat(0.0, 0.0, 0.0, 1.0)),
-            ("scale", Json.Vec3(0.0, 0.0, 0.0)));
+            ("scale", Json.Vec3(1.0, 1.0, 1.0)));
 
         List<JObj> BuildStratums(MapGen.ScTextureSet set, ExportResult exp)
         {

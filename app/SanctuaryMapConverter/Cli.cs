@@ -47,7 +47,7 @@ namespace SanctuaryMapConverter
                 : Path.Combine(Environment.CurrentDirectory, "generated");
             var v = validate && sanctuary != null ? new ValidateOptions
             {
-                Managed = Path.Combine(sanctuary, "map-editor", "SanctuaryMapEditor_Data", "Managed"),
+                Managed = GamePaths.ManagedDir(sanctuary),
                 CheckTextures = true,
                 GameRoot = sanctuary,
             } : null;
@@ -204,7 +204,7 @@ namespace SanctuaryMapConverter
             if (!noValidate && sanctuary != null)
                 o.Validate = new ValidateOptions
                 {
-                    Managed = Path.Combine(sanctuary, "map-editor", "SanctuaryMapEditor_Data", "Managed"),
+                    Managed = GamePaths.ManagedDir(sanctuary),
                     CheckTextures = true,
                     LuaCheck = true,
                     GameRoot = sanctuary,
@@ -241,7 +241,7 @@ namespace SanctuaryMapConverter
 
             string sanctuary = GamePaths.FindSanctuaryInstall();
             o.Managed ??= sanctuary != null
-                ? Path.Combine(sanctuary, "map-editor", "SanctuaryMapEditor_Data", "Managed")
+                ? GamePaths.ManagedDir(sanctuary)
                 : null;
             o.GameRoot ??= sanctuary;
             if (o.Managed == null)

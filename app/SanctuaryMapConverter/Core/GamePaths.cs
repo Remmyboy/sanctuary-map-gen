@@ -22,7 +22,7 @@ namespace SanctuaryMapConverter.Core
         {
             foreach (var lib in SteamLibraries())
             {
-                foreach (var name in new[] { "Sanctuary Shattered Sun Demo", "Sanctuary Shattered Sun" })
+                foreach (var name in new[] { "Sanctuary Shattered Sun Playtest", "Sanctuary Shattered Sun Demo", "Sanctuary Shattered Sun" })
                 {
                     string p = Path.Combine(lib, "steamapps", "common", name);
                     if (Directory.Exists(Path.Combine(p, "engine", "Sanctuary_Data", "Maps"))) return p;
@@ -39,6 +39,16 @@ namespace SanctuaryMapConverter.Core
 
         public static string EditorMaps(string sanctuary) =>
             Path.Combine(sanctuary, "map-editor", "SanctuaryMapEditor_Data", "Maps");
+
+        /// The Managed dir holding SanMap and Newtonsoft for validation. The
+        /// map editor's when the install ships one; the engine's otherwise -
+        /// the Playtest build dropped the editor.
+        public static string ManagedDir(string sanctuary)
+        {
+            string editor = Path.Combine(sanctuary, "map-editor", "SanctuaryMapEditor_Data", "Managed");
+            if (Directory.Exists(editor)) return editor;
+            return Path.Combine(sanctuary, "engine", "Sanctuary_Data", "Managed");
+        }
 
         /// The FAF vault and steam both hold source maps; offer every folder
         /// that exists.

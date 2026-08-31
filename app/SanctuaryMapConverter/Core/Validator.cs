@@ -42,7 +42,19 @@ namespace SanctuaryMapConverter.Core
                 };
                 ctx.LoadFromAssemblyPath(Path.Combine(o.Managed, "UnityEngine.CoreModule.dll"));
                 var nj = ctx.LoadFromAssemblyPath(Path.Combine(o.Managed, "Newtonsoft.Json.dll"));
-                var t = ctx.LoadFromAssemblyPath(Path.Combine(o.Managed, "EM.Map.dll")).GetType("EM.Map.SanMap");
+
+                // The Playtest build merged the EM.* assemblies; SanMap moved
+                // from EM.Map.dll into Trebuchet.dll with its namespace intact.
+                Type t = null;
+                foreach (var asmName in new[] { "EM.Map.dll", "Trebuchet.dll" })
+                {
+                    string dll = Path.Combine(o.Managed, asmName);
+                    if (!File.Exists(dll)) continue;
+                    t = ctx.LoadFromAssemblyPath(dll).GetType("EM.Map.SanMap");
+                    if (t != null) break;
+                }
+                if (t == null) throw new InvalidOperationException(
+                    "EM.Map.SanMap not found in EM.Map.dll or Trebuchet.dll under " + o.Managed);
 
                 // SanMap's only constructor takes a path and would start loading.
                 object map = RuntimeHelpers.GetUninitializedObject(t);
