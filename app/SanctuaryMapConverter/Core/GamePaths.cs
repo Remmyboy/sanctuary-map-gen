@@ -40,6 +40,10 @@ namespace SanctuaryMapConverter.Core
         public static string EditorMaps(string sanctuary) =>
             Path.Combine(sanctuary, "map-editor", "SanctuaryMapEditor_Data", "Maps");
 
+        /// Where the game keeps its asset packs.
+        public static string GamedataDir(string sanctuary) =>
+            sanctuary == null ? null : Path.Combine(sanctuary, "engine", "Sanctuary_Data", "Gamedata");
+
         /// The Managed dir holding SanMap and Newtonsoft for validation. The
         /// map editor's when the install ships one; the engine's otherwise -
         /// the Playtest build dropped the editor.

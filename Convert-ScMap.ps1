@@ -236,7 +236,10 @@ if ($cutMex -gt 0) { Write-Host ("  note: {0} of {1} resource spots sit off the 
 
 # --------------------------------------------------------- write out ----
 
-$folder = if ($Name) { $Name } else { '~SC-' + ($srcName -replace "[^\w]+", '_') }
+# The map's own name, cleaned into a folder name. No "~SC-" prefix: the tilde
+# sorts converted maps away from the rest of the list, which is not where
+# anyone looks for them.
+$folder = if ($Name) { $Name } else { ($srcName -replace "[^\w]+", '_').Trim('_') }
 # -Name picks the folder, not the map's identity. Overriding the display name
 # with it produced "~SC-Badlands CC0" where the same map converted the ordinary
 # way is "8 - Badlands_v4", which is the only structural difference between a

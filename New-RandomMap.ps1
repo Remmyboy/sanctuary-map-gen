@@ -283,6 +283,9 @@ for ($run = 0; $run -lt $Count; $run++) {
         $null = New-Item -ItemType Directory -Path $texDir -Force
 
         [MapGen]::BuildLayers()
+        # The preview draws this biome's actual ground, read from the game's
+        # own stratum textures - see Set-BiomePreviewColors.
+        Set-BiomePreviewColors $useBiome
         [MapGen]::WriteHeightmap((Join-Path $texDir 'heightmap.raw'))
         [MapGen]::WriteStratums($texDir)
         [MapGen]::WriteTints($texDir, 2048)

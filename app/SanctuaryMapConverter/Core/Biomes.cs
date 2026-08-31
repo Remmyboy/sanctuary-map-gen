@@ -113,6 +113,56 @@ namespace SanctuaryMapConverter.Core
         // maps: ~30 for ground cover, ~45 for rock and cliff.
         static readonly int[] SlotTargetTone = { 38, 45, 32, 44, 40, 34, 36, 45, 44 };
 
+        /// diffuseRemap as plain numbers, for callers that need the values
+        /// rather than the JSON. GetDiffuseRemap is the one writing the map.
+        static double[] DiffuseRemapValues(string texture, int slot)
+        {
+            int lum = TextureLum.TryGetValue(texture, out int v) ? v : 125;
+            double k = Math.Max(0.15, Math.Min(0.90, (double)SlotTargetTone[slot] / lum));
+            return new[] { Math.Round(k * 1.06, 3), Math.Round(k, 3), Math.Round(k * 0.90, 3) };
+        }
+
+        /// Point the preview at a generated map's actual ground.
+        ///
+        /// A converted map carries its textures in its own folder; a generated
+        /// map references the game's, which live inside Environment.sanpack -
+        /// a plain zip of .dds, behind the .tga paths the stratum layers name
+        /// (the loader is extension-agnostic). Without this a Winter map
+        /// previews in Highlands green, the same fault converted maps had.
+        ///
+        /// Silently leaves the built-in table alone when the pack is not
+        /// there: previews must not depend on the game being installed.
+        public static void SetPreviewColors(string biome, string gamedataDir = null)
+        {
+            gamedataDir ??= GamePaths.GamedataDir(GamePaths.FindSanctuaryInstall());
+            if (gamedataDir == null) return;
+            string pack = Path.Combine(gamedataDir, "Environment.sanpack");
+            if (!File.Exists(pack)) return;
+
+            var b = Get(biome);
+            var albedos = new byte[9][];
+            var remaps = new double[9][];
+            try
+            {
+                using var zip = System.IO.Compression.ZipFile.OpenRead(pack);
+                var index = new Dictionary<string, System.IO.Compression.ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
+                foreach (var e in zip.Entries) index[e.FullName.TrimStart('/')] = e;
+
+                for (int i = 0; i < 9; i++)
+                {
+                    string key = ResolveLayerPath(b.Layers[i]) + "_albedo.dds";
+                    if (!index.TryGetValue(key, out var entry)) continue;
+                    using var ms = new MemoryStream();
+                    using (var s = entry.Open()) s.CopyTo(ms);
+                    albedos[i] = ms.ToArray();
+                    remaps[i] = DiffuseRemapValues(b.Layers[i], i);
+                }
+            }
+            catch { return; }
+
+            MapGen.SetPreviewLayerColorsFromBytes(albedos, remaps);
+        }
+
         static JObj GetDiffuseRemap(string texture, int slot)
         {
             int lum = TextureLum.TryGetValue(texture, out int v) ? v : 125;

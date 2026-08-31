@@ -201,6 +201,52 @@ function Get-Biome([string]$key) {
     cover is darkened, rock is left brighter, and the far-tile blend rises for
     the layers that want visible detail up close.
 #>
+<#
+    Point the preview at a generated map's actual ground.
+
+    A converted map carries its textures in its own folder; a generated map
+    references the game's, which live inside Environment.sanpack - a plain zip
+    of .dds, behind the .tga paths the stratum layers name (the loader is
+    extension-agnostic). Without this a Winter map previews in Highlands green,
+    the same fault converted maps had.
+
+    Silently leaves the built-in table alone when the pack is not there:
+    previews must not depend on the game being installed.
+#>
+function Set-BiomePreviewColors([string]$Biome, [string]$GamedataDir) {
+    if (-not $GamedataDir) {
+        $GamedataDir = 'C:\Program Files (x86)\Steam\steamapps\common\Sanctuary Shattered Sun Playtest\engine\Sanctuary_Data\Gamedata'
+    }
+    $pack = Join-Path $GamedataDir 'Environment.sanpack'
+    if (-not (Test-Path $pack)) { return }
+
+    $b = Get-Biome $Biome
+    $albedos = New-Object 'byte[][]' 9
+    $remaps = New-Object 'double[][]' 9
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [IO.Compression.ZipFile]::OpenRead($pack)
+        try {
+            $index = @{}
+            foreach ($e in $zip.Entries) { $index[$e.FullName.ToLowerInvariant().TrimStart('/')] = $e }
+            for ($i = 0; $i -lt 9; $i++) {
+                $key = ((Resolve-LayerPath $b.Layers[$i]) + '_albedo.dds').ToLowerInvariant()
+                $entry = $index[$key]
+                if (-not $entry) { continue }
+                $ms = New-Object IO.MemoryStream
+                $st = $entry.Open(); $st.CopyTo($ms); $st.Dispose()
+                $albedos[$i] = $ms.ToArray(); $ms.Dispose()
+                $rm = Get-DiffuseRemap $b.Layers[$i] $i
+                $remaps[$i] = [double[]]@($rm.r, $rm.g, $rm.b)
+            }
+        }
+        finally { $zip.Dispose() }
+    }
+    catch { return }
+
+    [MapGen]::SetPreviewLayerColorsFromBytes($albedos, $remaps)
+}
+
 function New-StratumLayers([string]$biome) {
     $b = Get-Biome $biome
 

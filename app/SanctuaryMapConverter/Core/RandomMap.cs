@@ -291,6 +291,9 @@ namespace SanctuaryMapConverter.Core
                     Directory.CreateDirectory(texDir);
 
                     MapGen.BuildLayers();
+                    // The preview draws this biome's actual ground, read from the
+                    // game's own stratum textures - see Biome.SetPreviewColors.
+                    Biome.SetPreviewColors(useBiome);
                     MapGen.WriteHeightmap(Path.Combine(texDir, "heightmap.raw"));
                     MapGen.WriteStratums(texDir);
                     MapGen.WriteTints(texDir, 2048);

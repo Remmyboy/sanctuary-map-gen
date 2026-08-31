@@ -1331,7 +1331,7 @@ public static partial class MapGen
     // author's textures instead, so the converter overwrites this from the
     // files it exported - see SetPreviewLayerColors. Left as-is a desert map
     // previews as green highland, which is what the map list actually showed.
-    public static float[,] LayerCol = {
+    static readonly float[,] LayerColDefault = {
         { 0.28f, 0.40f, 0.19f },   // 0 base (grass07)
         { 0.36f, 0.34f, 0.33f },   // 1 rock_basalt01 (cliff faces)
         { 0.42f, 0.34f, 0.24f },   // 2 heather03
@@ -1342,6 +1342,10 @@ public static partial class MapGen
         { 0.53f, 0.50f, 0.47f },   // 7 rock_cliff03
         { 0.64f, 0.61f, 0.56f },   // 8 gravel01
     };
+
+    /// The live table WritePreview reads. Starts as the defaults above and is
+    /// overwritten per map by SetPreviewLayerColors.
+    public static float[,] LayerCol = (float[,])LayerColDefault.Clone();
 
     /// Mean luminance the preview aims for across the layers it draws.
     /// Measured off the table above, which is what every preview looked like
@@ -1364,16 +1368,26 @@ public static partial class MapGen
     ///
     /// Unreadable or missing files keep their built-in colour, so a partial
     /// export degrades to the old behaviour one layer at a time.
-    public static void SetPreviewLayerColors(string[] files, double[][] remaps)
+    /// As SetPreviewLayerColors, but from albedo bytes already in hand.
+    ///
+    /// A converted map's textures sit in its own folder; a generated map's
+    /// live inside Environment.sanpack, and unpacking a zip is the caller's
+    /// job - the two pipelines each have their own reader, and keeping it out
+    /// of here is what lets this stay one shared implementation.
+    public static void SetPreviewLayerColorsFromBytes(byte[][] albedos, double[][] remaps)
     {
+        // Back to the built-in table first: this runs once per map in a batch
+        // and EngineState.Reset does not, so a layer this map cannot resolve
+        // must fall back to the default rather than keep the last map's.
+        Array.Copy(LayerColDefault, LayerCol, LayerColDefault.Length);
+
         var col = new double[9][];
         double sum = 0; int n = 0;
         for (int i = 0; i <= 8; i++)
         {
-            if (files == null || i >= files.Length || string.IsNullOrEmpty(files[i])) continue;
-            if (!File.Exists(files[i])) continue;
+            if (albedos == null || i >= albedos.Length || albedos[i] == null) continue;
             DdsInfo d;
-            try { d = ReadDdsInfo(File.ReadAllBytes(files[i])); } catch { continue; }
+            try { d = ReadDdsInfo(albedos[i]); } catch { continue; }
             if (!d.Ok) continue;
 
             double[] rm = remaps != null && i < remaps.Length && remaps[i] != null && remaps[i].Length >= 3
@@ -1392,6 +1406,18 @@ public static partial class MapGen
             for (int k = 0; k < 3; k++)
                 LayerCol[i, k] = (float)Math.Min(1.0, col[i][k] * gain);
         }
+    }
+
+    public static void SetPreviewLayerColors(string[] files, double[][] remaps)
+    {
+        var bytes = new byte[9][];
+        for (int i = 0; i <= 8; i++)
+        {
+            if (files == null || i >= files.Length || string.IsNullOrEmpty(files[i])) continue;
+            if (!File.Exists(files[i])) continue;
+            try { bytes[i] = File.ReadAllBytes(files[i]); } catch { }
+        }
+        SetPreviewLayerColorsFromBytes(bytes, remaps);
     }
 
     public static void WritePreview(string path, int res, bool annotate,

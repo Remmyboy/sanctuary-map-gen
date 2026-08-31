@@ -167,7 +167,10 @@ namespace SanctuaryMapConverter.Core
                 Log($"  note: {offMass} of {mexX.Count} resource spots sit off the main landmass (islands or water)");
 
             // ---- output folder -------------------------------------------
-            string folder = O.Name ?? "~SC-" + Regex.Replace(srcName, "[^\\w]+", "_").Trim('_');
+            // The map's own name, cleaned into a folder name. No "~SC-"
+            // prefix: the tilde sorts converted maps away from the rest of
+            // the list, which is not where anyone looks for them.
+            string folder = O.Name ?? Regex.Replace(srcName, "[^\\w]+", "_").Trim('_');
             string mapDir = Path.Combine(O.OutputMapsRoot, folder);
             string texDir = Path.Combine(mapDir, "Textures");
             if (Directory.Exists(mapDir)) Directory.Delete(mapDir, true);
