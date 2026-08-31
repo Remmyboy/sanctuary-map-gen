@@ -59,6 +59,14 @@ history. Judge on Seton's mud flats vs its rock.
 | rock | 45 | | veg | 24 |
 | gravel | 38 | | | |
 
+## Wreckage import (`src/ScWrecks.cs`)
+
+| dial | current | watch for |
+|---|---|---|
+| `ScWreckMinMass` | 30 (walls cost 2, a T1 tank 56) | reclaim fields feeling empty = corpus maps lean on mid-value debris just under it |
+| Size ladder | hitbox area ≤ 0.5 / 2.5 / 9 / 30 / else, aspect > 1.3 splits the two mid meshes | wrecks visually too big or small for what they were — judge on The_Dark_Heart's debris field |
+| Economy | every SSS wreck blueprint is worth 100 alloys / 10 s (dev placeholder values) | positions and silhouettes are faithful, per-wreck value is not — revisit when the devs tune their wreck blueprints or ship a wider set |
+
 ## Playable-area guards (`src/ScMapEnvironment.cs` ScPlayableArea)
 
 Behavioral rather than cosmetic; less likely to need touching, but if a map's

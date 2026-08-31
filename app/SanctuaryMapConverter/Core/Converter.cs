@@ -268,6 +268,50 @@ namespace SanctuaryMapConverter.Core
                 else Log("  props: source prop table unreadable; map converts without props");
             }
 
+            // ---- wreckage ------------------------------------------------
+            // Starting reclaim, mapped onto the Playtest build's six wreck
+            // meshes by unit size - see src/ScWrecks.cs for the ladder and
+            // the wall filter. Every wreck blueprint is worth the same 100
+            // alloys (dev placeholder values), so fidelity is in the
+            // positions and silhouettes, not yet the economy.
+            int placedWrecks = 0;
+            var wrecks = MapGen.ReadScWrecks(saveFile);
+            if (wrecks.Count > 0)
+            {
+                string unitCsv = O.TableCsv != null
+                    ? Path.Combine(Path.GetDirectoryName(O.TableCsv), "unit-wrecks.csv")
+                    : null;
+                if (unitCsv == null || !File.Exists(unitCsv))
+                    Log($"  wreckage: {wrecks.Count:n0} source wrecks skipped - unit-wrecks.csv not found");
+                else
+                {
+                    var wtable = MapGen.LoadScUnitTable(unitCsv);
+                    var wbuckets = new SortedDictionary<string, List<JObj>>(StringComparer.Ordinal);
+                    int wskipped = 0;
+                    foreach (var w in wrecks)
+                    {
+                        double x = w.X, z = MapGen.ScMarkerZ(sc, w.Z);
+                        if (x < 0 || x > size || z < 0 || z > size) { wskipped++; continue; }
+                        string mesh = MapGen.ScWreckBlueprint(w.Type, wtable);
+                        if (mesh == null) { wskipped++; continue; }
+                        double yaw = Math.PI - w.Yaw;        // the z negation mirrors the heading
+                        if (!wbuckets.TryGetValue(mesh, out var list)) wbuckets[mesh] = list = new List<JObj>();
+                        list.Add(Json.Obj(
+                            ("position", Json.Vec3(Math.Round(x, 3), Math.Round(MapGen.HeightAtWorld((float)x, (float)z), 2), Math.Round(z, 3))),
+                            ("rotation", Json.Quat(0.0, Math.Round(Math.Sin(yaw / 2), 7), 0.0, Math.Round(Math.Cos(yaw / 2), 7))),
+                            ("scale", Json.Vec3(1.0, 1.0, 1.0))));
+                    }
+                    placedWrecks = wbuckets.Values.Sum(l => l.Count);
+                    foreach (var kv in wbuckets)
+                        propGroups.Add(Json.Obj(
+                            ("blueprintPath", $"Environment/Dev/Props/Units/{kv.Key}/{kv.Key}_wreckage{O.PropExtension}"),
+                            ("transforms", kv.Value)));
+                    if (placedWrecks > 0)
+                        Log($"  wreckage: {placedWrecks:n0} of {wrecks.Count:n0} source wrecks placed as harvestable wreck props" +
+                            (wskipped > 0 ? $", {wskipped:n0} skipped (walls and other sub-{MapGen.ScWreckMinMass:N0}-mass debris)" : ""));
+                }
+            }
+
             // ---- stratum layers ------------------------------------------
             var stratums = BuildStratums(texSet, exp);
 

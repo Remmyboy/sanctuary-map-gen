@@ -495,6 +495,51 @@ if (-not $NoProps -and $null -eq $importedProps) {
     }
 }
 
+# ---- wreckage ----
+
+# Starting reclaim, mapped onto the Playtest build's six wreck meshes by unit
+# size - see src\ScWrecks.cs for the ladder and the wall filter. Every wreck
+# blueprint is worth the same 100 alloys (dev placeholder values), so fidelity
+# is in the positions and silhouettes, not yet the economy.
+$wrecks = [MapGen]::ReadScWrecks($saveFile.FullName)
+if ($wrecks.Count -gt 0) {
+    $unitCsv = Join-Path $here 'docs\unit-wrecks.csv'
+    if (-not (Test-Path $unitCsv)) {
+        "  wreckage: {0:n0} source wrecks skipped - docs\unit-wrecks.csv not found (run tools\Measure-ScUnits.ps1)" -f $wrecks.Count | Write-Host
+    }
+    else {
+        $wtable = [MapGen]::LoadScUnitTable($unitCsv)
+        $wbuckets = @{}; $wskipped = 0
+        foreach ($w in $wrecks) {
+            $x = [double]$w.X; $z = [double][MapGen]::ScMarkerZ($sc, [float]$w.Z)
+            if ($x -lt 0 -or $x -gt $Size -or $z -lt 0 -or $z -gt $Size) { $wskipped++; continue }
+            $mesh = [MapGen]::ScWreckBlueprint($w.Type, $wtable)
+            if (-not $mesh) { $wskipped++; continue }
+            $yaw = [Math]::PI - [double]$w.Yaw       # the z negation mirrors the heading
+            if (-not $wbuckets.ContainsKey($mesh)) { $wbuckets[$mesh] = @() }
+            $wbuckets[$mesh] += , [ordered]@{
+                position = @{ x = [math]::Round($x, 3); y = [math]::Round([MapGen]::HeightAtWorld([float]$x, [float]$z), 2); z = [math]::Round($z, 3) }
+                rotation = @{ x = 0.0; y = [math]::Round([math]::Sin($yaw / 2), 7); z = 0.0; w = [math]::Round([math]::Cos($yaw / 2), 7) }
+                scale    = @{ x = 1.0; y = 1.0; z = 1.0 }
+            }
+        }
+        $wplaced = 0
+        foreach ($b in ($wbuckets.Keys | Sort-Object)) {
+            if ($wbuckets[$b].Count -eq 0) { continue }
+            $wplaced += $wbuckets[$b].Count
+            $propGroups += , [ordered]@{
+                blueprintPath = "Environment/Dev/Props/Units/$b/$b`_wreckage$PropExtension"
+                transforms    = $wbuckets[$b]
+            }
+        }
+        if ($wplaced -gt 0) {
+            "  wreckage: {0:n0} of {1:n0} source wrecks placed as harvestable wreck props{2}" -f `
+                $wplaced, $wrecks.Count, `
+                $(if ($wskipped) { ", {0:n0} skipped (walls and other sub-{1:N0}-mass debris)" -f $wskipped, [MapGen]::ScWreckMinMass }) | Write-Host
+        }
+    }
+}
+
 # ---- decals ----
 
 # The source map's decals - roads, craters, mud, erosion - carried as

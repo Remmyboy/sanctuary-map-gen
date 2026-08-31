@@ -105,6 +105,7 @@ Everything the source map is, short of decals:
 | macro overlay | the UpperStratum macrotexture, baked into `tint_colors` at its own repeat (source-texture mode only — the bake copies GPG pixels) |
 | mask maps | per-role smoothness in source mode — mud glistens, rock sheds light, grass stays matte (CC0 mode already carries each material's real mask) |
 | props | the author's placements — trees, groups, rocks — onto a biome-matched Sanctuary palette |
+| wreckage | `WRECKAGE`-group wrecks as harvestable wreck props, size-matched onto the Playtest build's six wreck meshes; walls and sub-30-mass debris skipped (every wreck blueprint is worth the same placeholder 100 alloys, so a wall would be a goldmine). `docs/unit-wrecks.csv` carries each FA unit's mass and hitbox (regenerate with `tools\Measure-ScUnits.ps1`) |
 | decals | parked; see below |
 
 **The playable area is adopted only when it can be trusted.** 28 of 299 corpus
