@@ -93,6 +93,9 @@ $rc    = [MapGen]::CountTrue($reach)
 
 Write-Host 'Building stratum weights...'
 [MapGen]::BuildLayers()
+# Slot badges on the preview, in spawn order.
+[MapGen]::PreviewSpawnX = [float[]][MapGen]::BaseX.Clone()
+[MapGen]::PreviewSpawnZ = [float[]][MapGen]::BaseZ.Clone()
 
 # ------------------------------------------------------------ markers ----
 

@@ -291,6 +291,9 @@ namespace SanctuaryMapConverter.Core
                     Directory.CreateDirectory(texDir);
 
                     MapGen.BuildLayers();
+                    // Slot badges on the preview, in spawn order.
+                    MapGen.PreviewSpawnX = (float[])MapGen.BaseX.Clone();
+                    MapGen.PreviewSpawnZ = (float[])MapGen.BaseZ.Clone();
                     // The preview draws this biome's actual ground, read from the
                     // game's own stratum textures - see Biome.SetPreviewColors.
                     Biome.SetPreviewColors(useBiome);

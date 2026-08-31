@@ -62,6 +62,9 @@ namespace SanctuaryMapConverter.Core
             log(string.Format("  smoothed {0} isolated blocked patches", MapGen.SmoothPathingSpecks(60, 8)));
             log("Building stratum weights...");
             MapGen.BuildLayers();
+            // Slot badges on the preview, in spawn order.
+            MapGen.PreviewSpawnX = (float[])MapGen.BaseX.Clone();
+            MapGen.PreviewSpawnZ = (float[])MapGen.BaseZ.Clone();
 
             // ------------------------------------------------------------- markers ---
 

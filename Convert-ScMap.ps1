@@ -323,6 +323,11 @@ if (-not $NoSourceTextures) {
 }
 if (-not $srcTextures) { [MapGen]::BuildLayers() }
 
+# Slot badges on the preview, in spawn order - the same order the Spawn
+# markers are written in below.
+[MapGen]::PreviewSpawnX = [float[]]($spawns | ForEach-Object { [float]$_.X })
+[MapGen]::PreviewSpawnZ = [float[]]($spawns | ForEach-Object { [float]$_.Z })
+
 # The preview draws the author's ground, not our biome's: mean colour of each
 # exported albedo, times the diffuseRemap the map will render it through. See
 # SetPreviewLayerColors.

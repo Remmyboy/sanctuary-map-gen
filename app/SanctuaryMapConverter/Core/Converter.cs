@@ -213,6 +213,11 @@ namespace SanctuaryMapConverter.Core
                     Log($"  macro overlay: {Path.GetFileName(texSet.Paths[9])} baked into the tint at {texSet.Scales[9]:N0} m repeat");
             }
 
+            // Slot badges on the preview, in spawn order - the same order the
+            // Spawn markers are written in below.
+            MapGen.PreviewSpawnX = spawns.Select(s => (float)s.X).ToArray();
+            MapGen.PreviewSpawnZ = spawns.Select(s => (float)s.Z).ToArray();
+
             // The preview draws the author's ground, not our biome's: mean
             // colour of each exported albedo, times the diffuseRemap the map
             // will render it through. See SetPreviewLayerColors.

@@ -58,6 +58,9 @@ Write-Host 'Building heightfield...'
 "  smoothed {0} isolated blocked patches" -f ([MapGen]::SmoothPathingSpecks(60, 8)) | Write-Host
 Write-Host 'Building stratum weights...'
 [MapGen]::BuildLayers()
+# Slot badges on the preview, in spawn order.
+[MapGen]::PreviewSpawnX = [float[]][MapGen]::BaseX.Clone()
+[MapGen]::PreviewSpawnZ = [float[]][MapGen]::BaseZ.Clone()
 
 # ------------------------------------------------------------- markers ---
 

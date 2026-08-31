@@ -283,6 +283,9 @@ for ($run = 0; $run -lt $Count; $run++) {
         $null = New-Item -ItemType Directory -Path $texDir -Force
 
         [MapGen]::BuildLayers()
+        # Slot badges on the preview, in spawn order.
+        [MapGen]::PreviewSpawnX = [float[]][MapGen]::BaseX.Clone()
+        [MapGen]::PreviewSpawnZ = [float[]][MapGen]::BaseZ.Clone()
         # The preview draws this biome's actual ground, read from the game's
         # own stratum textures - see Set-BiomePreviewColors.
         Set-BiomePreviewColors $useBiome

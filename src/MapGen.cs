@@ -1420,6 +1420,107 @@ public static partial class MapGen
         SetPreviewLayerColorsFromBytes(bytes, remaps);
     }
 
+    // Numbered slot badges for the preview, in the palette the developers'
+    // own The_Forge preview uses - the only shipped map that carries one.
+    // Sampled from its pixels at the spawn positions its .sanmap records,
+    // which is also what confirmed the world-to-pixel mapping here: the
+    // saturated pixel sits under the marker only when preview row 0 is world
+    // z max, and lands on open ground the other way up.
+    static readonly byte[,] SlotColor = {
+        {   0, 160, 255 },   // 1 blue
+        { 233,  60,  45 },   // 2 red
+        {   0, 214,  55 },   // 3 green
+        { 255,   0, 177 },   // 4 magenta
+        { 255, 213,   0 },   // 5 yellow
+        {   0, 216, 183 },   // 6 cyan
+        { 170,  60, 220 },   // 7 purple
+        { 255, 140,  40 },   // 8 orange
+    };
+
+    // 3x5 digits, row-major, one string per glyph. Written out rather than
+    // drawn with a font because the engine is compiled by Add-Type in the
+    // PowerShell pipeline, where there is no drawing library to call - and a
+    // bitmap font keeps both pipelines byte-identical for free.
+    static readonly string[] Digit35 = {
+        "111101101101111", // 0
+        "010110010010111", // 1
+        "111001111100111", // 2
+        "111001111001111", // 3
+        "101101111001001", // 4
+        "111100111001111", // 5
+        "111100111101111", // 6
+        "111001001001001", // 7
+        "111101111101111", // 8
+        "111101111001111", // 9
+    };
+
+    /// Spawn positions to badge onto the preview, in world metres, in slot
+    /// order. Null draws none, which is what a debug render wants.
+    public static float[] PreviewSpawnX, PreviewSpawnZ;
+
+    /// Numbered discs over the terrain, one per spawn.
+    ///
+    /// The badges are about 3.5% of the preview across, matching The_Forge -
+    /// legible in a map list, small enough to leave the ground readable. A
+    /// dark rim keeps a badge visible over ground of its own colour.
+    static void DrawSpawnIcons(byte[] rgb, int res)
+    {
+        if (PreviewSpawnX == null || PreviewSpawnZ == null) return;
+        int n = Math.Min(PreviewSpawnX.Length, PreviewSpawnZ.Length);
+        if (n == 0) return;
+
+        int r = Math.Max(5, (int)Math.Round(res * 0.035));
+        int s = Math.Max(1, r / 4);                     // digit pixel scale
+
+        for (int i = 0; i < n; i++)
+        {
+            int cx = (int)Math.Round(PreviewSpawnX[i] / MapSize * res);
+            int cy = (int)Math.Round((MapSize - PreviewSpawnZ[i]) / MapSize * res);
+            byte cr = SlotColor[i % 8, 0], cg = SlotColor[i % 8, 1], cb = SlotColor[i % 8, 2];
+
+            for (int dy = -r - 1; dy <= r + 1; dy++)
+            for (int dx = -r - 1; dx <= r + 1; dx++)
+            {
+                int x = cx + dx, y = cy + dy;
+                if (x < 0 || y < 0 || x >= res || y >= res) continue;
+                int d2 = dx * dx + dy * dy;
+                if (d2 > (r + 1) * (r + 1)) continue;
+                int o = (y * res + x) * 3;
+                if (d2 > r * r)
+                {
+                    // Rim: darken what is already there rather than paint a
+                    // colour, so it reads as an edge on any ground.
+                    rgb[o] = (byte)(rgb[o] / 3); rgb[o + 1] = (byte)(rgb[o + 1] / 3); rgb[o + 2] = (byte)(rgb[o + 2] / 3);
+                }
+                else { rgb[o] = cr; rgb[o + 1] = cg; rgb[o + 2] = cb; }
+            }
+
+            string t = (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            int gw = 3 * s, gap = s;
+            int total = t.Length * gw + (t.Length - 1) * gap;
+            int x0 = cx - total / 2, y0 = cy - 5 * s / 2;
+            for (int k = 0; k < t.Length; k++)
+            {
+                int d = t[k] - '0';
+                if (d < 0 || d > 9) continue;
+                string glyph = Digit35[d];
+                for (int gy = 0; gy < 5; gy++)
+                for (int gx = 0; gx < 3; gx++)
+                {
+                    if (glyph[gy * 3 + gx] != '1') continue;
+                    for (int py = 0; py < s; py++)
+                    for (int px = 0; px < s; px++)
+                    {
+                        int x = x0 + k * (gw + gap) + gx * s + px, y = y0 + gy * s + py;
+                        if (x < 0 || y < 0 || x >= res || y >= res) continue;
+                        int o = (y * res + x) * 3;
+                        rgb[o] = 20; rgb[o + 1] = 20; rgb[o + 2] = 26;
+                    }
+                }
+            }
+        }
+    }
+
     public static void WritePreview(string path, int res, bool annotate,
                                     float[] markX, float[] markZ, int[] markKind)
     {
@@ -1464,6 +1565,9 @@ public static partial class MapGen
             rgb[o + 1] = (byte)(Clamp01(gg) * 255);
             rgb[o + 2] = (byte)(Clamp01(bb) * 255);
         }
+
+        // Slot badges, the way the developers' own preview carries them.
+        DrawSpawnIcons(rgb, res);
 
         if (annotate && markX != null)
         {
