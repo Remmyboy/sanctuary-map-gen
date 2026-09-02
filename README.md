@@ -8,9 +8,11 @@ playable before it ships.
 It ships as one self-contained Windows exe: no .NET install, no PowerShell, no
 setup. Download it, run it, point it at your maps.
 
-**289 of the 299 Supreme Commander maps on this machine convert (97%).** Seven
-of the rest are campaign maps with no skirmish spawns, refused correctly; one
-is non-square (also a campaign map); two are undiagnosed.
+**289 of a 299-map corpus convert (97%).** Of the stock set specifically, all
+51 convertible skirmish maps convert and validate against the game's own
+parsers. What is refused is refused for a reason: campaign maps with no
+skirmish spawns, one non-square map, and three that use a pre-Forged-Alliance
+texture-block format.
 
 ---
 ## Quick start
@@ -96,6 +98,7 @@ Everything the source map is, short of decals:
 | mask maps | per-role smoothness in source mode — mud glistens, rock sheds light, grass stays matte (CC0 mode already carries each material's real mask) |
 | props | the author's placements — trees, groups, rocks — onto a biome-matched Sanctuary palette |
 | wreckage | `WRECKAGE`-group wrecks as harvestable wreck props, size-matched onto the Playtest build's six wreck meshes; walls and sub-30-mass debris skipped (every wreck blueprint is worth the same placeholder 100 alloys, so a wall would be a goldmine). `docs/unit-wrecks.csv` carries each FA unit's mass and hitbox (regenerate with `tools\Measure-ScUnits.ps1`) |
+| preview | drawn from the map's own textures, with numbered spawn badges in the palette the developers use |
 | decals | parked; see below |
 
 **The playable area is adopted only when it can be trusted.** 28 of 299 corpus
@@ -174,6 +177,28 @@ layers side by side, as configured, for auditing pairs.
 
 ---
 
+## Previews
+
+`The_Forge` is the only map the developers ship a `preview.png` with, and it
+bakes numbered, colour-coded spawn discs into the image — the lobby does not
+overlay them, so a map without them in its own preview shows none. Converted
+and generated maps get the same treatment: the badge palette was sampled from
+that file, and sampling it *at the spawn positions its own `.sanmap` records*
+is also what confirmed the world-to-pixel mapping, since the saturated pixel
+sits under the marker only one way up (mean saturation 0.75 against 0.30
+inverted).
+
+The ground under the badges is the map's own. Each layer's albedo is measured
+and multiplied by the `diffuseRemap` it will render through, which is the
+honest colour — and in CC0 mode it is the point of that remap, solved so the
+substitute renders the tone the original rendered. The product is dark in
+absolute terms because in game it is lit, so the set is rescaled to the mean
+luminance of the old fixed table; every relationship between the layers
+survives. Generated maps read their biome's textures out of
+`Environment.sanpack` for the same treatment, so a Winter map no longer
+previews in Highlands green.
+
+---
 ## Props
 
 The corpus's 299 maps place **1,685,924 props** between them — 6,716 per map
@@ -389,11 +414,16 @@ are now gated directly, and a candidate re-rolls on any failure:
 
 ## Deploying
 
-Maps go in `<install>\engine\Sanctuary_Data\Maps\` for play and
-`<install>\map-editor\SanctuaryMapEditor_Data\Maps\` for the editor — same
-content, different prop extension. `--deploy-all` does both and validates
-everything it deployed. Restart the game afterwards; it caches map files at
-load.
+Maps go in `<install>\engine\Sanctuary_Data\Maps\` for play, and in
+`<install>\map-editor\SanctuaryMapEditor_Data\Maps\` for the editor when the
+build ships one — same content, different prop extension (`.santp` for the
+game, `.sanprop` for the editor; blueprint paths are *not*
+extension-agnostic, which is why both copies exist). The Playtest build
+dropped the map editor, so that tree is a bonus rather than a requirement and
+is skipped when it is missing. `--deploy-all` does whichever trees exist and
+validates everything it deployed.
+
+**Restart the game afterwards**; it caches map files at load.
 
 ---
 
