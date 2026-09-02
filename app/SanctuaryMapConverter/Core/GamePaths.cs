@@ -8,15 +8,78 @@ namespace SanctuaryMapConverter.Core
     // deploy targets.
     public static class GamePaths
     {
+        // Common install folder names across the ways people own this game:
+        // Steam, the retail/GOG installer, and Forged Alliance Forever, which
+        // most community mappers use and which installs beside the base game.
+        static readonly string[] FaFolderNames =
+        {
+            "Supreme Commander Forged Alliance",
+            "Supreme Commander - Forged Alliance",
+            "SupremeCommanderForgedAlliance",
+            "Forged Alliance Forever",
+            "ForgedAllianceForever",
+        };
+
+        /// The user's Forged Alliance install, or null.
+        ///
+        /// Steam is the common case but far from the only one, and a tool that
+        /// only finds Steam installs looks broken to everyone else. So: the
+        /// registry keys the retail installer and Steam's uninstall entry
+        /// write, then every Steam library, then a scan of likely roots on
+        /// each fixed drive. env.scd is the proof - it is the file the
+        /// source-texture mode actually reads.
         public static string FindFaInstall()
         {
-            foreach (var lib in SteamLibraries())
+            foreach (var cand in FaCandidates())
             {
-                string p = Path.Combine(lib, "steamapps", "common", "Supreme Commander Forged Alliance");
-                if (File.Exists(Path.Combine(p, "gamedata", "env.scd"))) return p;
+                if (cand == null) continue;
+                if (File.Exists(Path.Combine(cand, "gamedata", "env.scd"))) return cand;
             }
             return null;
         }
+
+        static IEnumerable<string> FaCandidates()
+        {
+            // Registry: the retail installer's own key, and Steam's uninstall
+            // entry for app 9420 (Forged Alliance).
+            foreach (var (key, valueName) in new[]
+            {
+                (@"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\THQ\Gas Powered Games\Supreme Commander Forged Alliance", "InstallPath"),
+                (@"HKEY_LOCAL_MACHINE\SOFTWARE\THQ\Gas Powered Games\Supreme Commander Forged Alliance", "InstallPath"),
+                (@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 9420", "InstallLocation"),
+                (@"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 9420", "InstallLocation"),
+            })
+            {
+                string v = null;
+                try { v = Registry.GetValue(key, valueName, null) as string; }
+                catch { }
+                if (!string.IsNullOrWhiteSpace(v)) yield return v.Trim().Trim('"');
+            }
+
+            foreach (var lib in SteamLibraries())
+                foreach (var name in FaFolderNames)
+                    yield return Path.Combine(lib, "steamapps", "common", name);
+
+            // Non-Steam layouts: the installer's defaults and the obvious
+            // hand-made ones, on every fixed drive.
+            foreach (var d in FixedDriveRoots())
+                foreach (var mid in new[] { "", "Games", "Program Files (x86)", "Program Files",
+                                            Path.Combine("Program Files (x86)", "THQ"), Path.Combine("Games", "THQ") })
+                    foreach (var name in FaFolderNames)
+                        yield return Path.Combine(d, mid, name);
+        }
+
+        static IEnumerable<string> FixedDriveRoots()
+        {
+            foreach (var d in DriveInfo.GetDrives())
+            {
+                if (d.DriveType != DriveType.Fixed) continue;
+                string root = null;
+                try { if (d.IsReady) root = d.RootDirectory.FullName; } catch { }
+                if (root != null) yield return root;
+            }
+        }
+
 
         public static string FindSanctuaryInstall()
         {
@@ -71,23 +134,40 @@ namespace SanctuaryMapConverter.Core
 
         /// Bundled data (texturepack + substitution table): next to the exe in
         /// production, up the tree in development.
+        /// Where the substitution table and the CC0 texturepack live.
+        ///
+        /// Two passes, and the order matters: a candidate holding BOTH the
+        /// table and the pack beats one holding only the table. The build
+        /// copies the CSVs next to the exe, so in a dev tree that folder
+        /// exists but has no pack - taking it on the first sighting would
+        /// disable CC0 mode against a repo that has the pack right there.
         public static string FindDataDir()
         {
             string exeDir = AppContext.BaseDirectory;
-            foreach (var cand in new[]
+            var cands = new[]
             {
                 Path.Combine(exeDir, "data"),
                 // Development layout: repo root holds texturepack/ and docs/.
                 Path.GetFullPath(Path.Combine(exeDir, "..", "..", "..", "..", "..")),
-            })
-            {
-                if (File.Exists(Path.Combine(cand, "texture-map.csv")) ||
-                    (File.Exists(Path.Combine(cand, "docs", "texture-map.csv")) &&
-                     Directory.Exists(Path.Combine(cand, "texturepack"))))
-                    return cand;
-            }
+            };
+            foreach (var cand in cands)
+                if (HasTable(cand) && Directory.Exists(Path.Combine(cand, "texturepack"))) return cand;
+            foreach (var cand in cands)
+                if (HasTable(cand)) return cand;
             return null;
         }
+
+        static bool HasTable(string dir) =>
+            File.Exists(Path.Combine(dir, "texture-map.csv")) ||
+            File.Exists(Path.Combine(dir, "docs", "texture-map.csv"));
+
+        /// Is the CC0 mode's data actually present? The table alone is not
+        /// enough - without the texturepack behind it every layer would
+        /// resolve to nothing, which is a failure worth catching before a
+        /// conversion starts rather than part-way through one.
+        public static bool HaveCc0Data(string packDir, string tableCsv) =>
+            packDir != null && tableCsv != null &&
+            File.Exists(tableCsv) && Directory.Exists(packDir);
 
         /// Resolve the two data files whichever layout FindDataDir returned.
         public static (string packDir, string tableCsv) DataFiles(string dataDir)

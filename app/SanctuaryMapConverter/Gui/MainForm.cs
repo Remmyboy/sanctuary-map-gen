@@ -16,6 +16,8 @@ namespace SanctuaryMapConverter.Gui
         readonly RadioButton _modeCc0 = new() { Text = "CC0 textures (shareable)", AutoSize = true, Checked = true };
         readonly ComboBox _convBiome = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
         readonly Button _convert = new() { Text = "Convert", Width = 120, Height = 32 };
+        readonly Button _convertAll = new() { Text = "Convert all", Width = 120, Height = 26 };
+        readonly TextBox _mapsFolder = new() { Width = 340 };
 
         // -- generate --
         readonly ComboBox _style = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
@@ -38,6 +40,7 @@ namespace SanctuaryMapConverter.Gui
 
         readonly List<string> _mapFolders = new();
         string _packDir, _tableCsv;
+        UserSettings _settings = new();
 
         public MainForm()
         {
@@ -60,14 +63,20 @@ namespace SanctuaryMapConverter.Gui
             ct.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             ct.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             ct.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            AddRow(ct, "Source map", _mapPicker, MakeButton("Browse...", PickSourceFolder));
+            // Two ways in: point at a folder full of maps and pick from the
+            // list, or browse straight to one map. Auto-detection fills the
+            // first in when it can, and whatever is chosen is remembered.
+            AddRow(ct, "Maps folder", _mapsFolder, MakeButton("Browse...", PickMapsFolder));
+            AddRow(ct, "Source map", _mapPicker, MakeButton("One map...", PickSourceFolder));
             var modes = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown };
             modes.Controls.Add(_modeCc0);
             modes.Controls.Add(_modeFa);
             ct.Controls.Add(new Label { Text = "Textures", AutoSize = true, Anchor = AnchorStyles.Left });
             ct.Controls.Add(modes);
-            ct.Controls.Add(_convert);
-            _convert.Anchor = AnchorStyles.Right;
+            var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, Anchor = AnchorStyles.Right };
+            buttons.Controls.Add(_convert);
+            buttons.Controls.Add(_convertAll);
+            ct.Controls.Add(buttons);
             // The biome is the lighting/fog base; the source map's own sun and
             // fog override what translates.
             _convBiome.Items.AddRange(new object[] { "Tropical", "Highlands", "Winter", "Evergreen", "Arid" });
@@ -103,6 +112,7 @@ namespace SanctuaryMapConverter.Gui
             Controls.Add(paths);
 
             _convert.Click += (_, _) => RunConvert();
+            _convertAll.Click += (_, _) => RunConvertAll();
             _generate.Click += (_, _) => RunGenerate();
             Load += (_, _) => Detect();
         }
@@ -124,14 +134,18 @@ namespace SanctuaryMapConverter.Gui
 
         void Detect()
         {
-            _faPath.Text = GamePaths.FindFaInstall() ?? "";
-            _sanctuaryPath.Text = GamePaths.FindSanctuaryInstall() ?? "";
+            // A remembered path wins over detection: the user pointed at it
+            // for a reason, and re-detecting would overrule them every launch.
+            _settings = UserSettings.Load();
+            _faPath.Text = Pick(_settings.FaInstall, () => GamePaths.FindFaInstall());
+            _sanctuaryPath.Text = Pick(_settings.SanctuaryInstall, () => GamePaths.FindSanctuaryInstall());
+            _mapsFolder.Text = _settings.MapsFolder is string m && Directory.Exists(m) ? m : "";
             (_packDir, _tableCsv) = GamePaths.DataFiles(GamePaths.FindDataDir());
 
-            if (_packDir == null || !File.Exists(_tableCsv))
+            if (!GamePaths.HaveCc0Data(_packDir, _tableCsv))
             {
                 _modeCc0.Enabled = false;
-                _modeCc0.Text = "CC0 textures (bundled data missing)";
+                _modeCc0.Text = "CC0 textures (needs the data folder - see README)";
                 _modeFa.Checked = true;
             }
             RefreshFaGate();
@@ -141,8 +155,23 @@ namespace SanctuaryMapConverter.Gui
             Log($"  Forged Alliance: {(_faPath.Text.Length > 0 ? _faPath.Text : "not found - FA-textures mode disabled")}");
             Log($"  Sanctuary:       {(_sanctuaryPath.Text.Length > 0 ? _sanctuaryPath.Text : "not found - set it to deploy")}");
             Log($"  CC0 library:     {(_modeCc0.Enabled ? _packDir : "missing")}");
-            Log($"  {_mapFolders.Count} source maps found. Convert one, or generate a fresh random map.");
+            if (_mapFolders.Count > 0)
+                Log($"  {_mapFolders.Count} source maps found. Convert one, convert them all, or generate a fresh random map.");
+            else
+                Log("  No source maps found - set 'Maps folder' to your Forged Alliance maps folder " +
+                    "(its own \\maps, or Documents\\My Games\\Gas Powered Games\\Supreme Commander Forged Alliance\\Maps).");
             Log("");
+        }
+
+        static string Pick(string saved, Func<string> detect) =>
+            !string.IsNullOrWhiteSpace(saved) && Directory.Exists(saved) ? saved : (detect() ?? "");
+
+        void SaveSettings()
+        {
+            _settings.FaInstall = _faPath.Text;
+            _settings.SanctuaryInstall = _sanctuaryPath.Text;
+            _settings.MapsFolder = _mapsFolder.Text;
+            _settings.Save();
         }
 
         void RefreshFaGate()
@@ -161,23 +190,68 @@ namespace SanctuaryMapConverter.Gui
         {
             _mapFolders.Clear();
             _mapPicker.Items.Clear();
-            foreach (var root in GamePaths.SourceMapRoots(_faPath.Text.Length > 0 ? _faPath.Text : null))
-                foreach (var dir in Directory.EnumerateDirectories(root))
-                    if (Directory.EnumerateFiles(dir, "*.scmap").Any())
-                    {
-                        _mapFolders.Add(dir);
-                        _mapPicker.Items.Add(Path.GetFileName(dir));
-                    }
+
+            // The chosen maps folder first, then whatever detection finds, and
+            // never the same folder twice - the two overlap whenever the user
+            // picks a folder we would have found anyway.
+            var roots = new List<string>();
+            if (_mapsFolder.Text.Length > 0 && Directory.Exists(_mapsFolder.Text)) roots.Add(_mapsFolder.Text);
+            roots.AddRange(GamePaths.SourceMapRoots(_faPath.Text.Length > 0 ? _faPath.Text : null));
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var root in roots)
+            {
+                if (!seen.Add(Path.GetFullPath(root))) continue;
+                // A folder holding one map, rather than a folder of maps, is
+                // what someone naturally browses to - so accept both.
+                if (HasMap(root)) { AddMap(root, seen); continue; }
+                IEnumerable<string> subs;
+                try { subs = Directory.EnumerateDirectories(root); } catch { continue; }
+                foreach (var dir in subs) if (HasMap(dir)) AddMap(dir, seen);
+            }
             if (_mapPicker.Items.Count > 0) _mapPicker.SelectedIndex = 0;
+            _convertAll.Enabled = _mapFolders.Count > 0;
+            _convertAll.Text = _mapFolders.Count > 0 ? $"Convert all {_mapFolders.Count}" : "Convert all";
+        }
+
+        static bool HasMap(string dir)
+        {
+            try { return Directory.EnumerateFiles(dir, "*.scmap").Any(); }
+            catch { return false; }
+        }
+
+        void AddMap(string dir, HashSet<string> seen)
+        {
+            if (!seen.Add(Path.GetFullPath(dir))) return;
+            _mapFolders.Add(dir);
+            _mapPicker.Items.Add(Path.GetFileName(dir));
+        }
+
+        void PickMapsFolder()
+        {
+            using var d = new FolderBrowserDialog
+            {
+                Description = "Your Forged Alliance maps folder - the one holding a folder per map",
+                SelectedPath = _mapsFolder.Text.Length > 0 ? _mapsFolder.Text : "",
+            };
+            if (d.ShowDialog(this) != DialogResult.OK) return;
+            _mapsFolder.Text = d.SelectedPath;
+            RefreshMapList();
+            SaveSettings();
+            Log(_mapFolders.Count > 0
+                ? $"  {_mapFolders.Count} source maps found in {d.SelectedPath}"
+                : $"  no .scmap found under {d.SelectedPath} - pick the folder that holds a folder per map");
         }
 
         void PickSourceFolder()
         {
             using var d = new FolderBrowserDialog { Description = "Folder containing the .scmap" };
             if (d.ShowDialog(this) != DialogResult.OK) return;
+            if (!HasMap(d.SelectedPath)) { Log($"  no .scmap in {d.SelectedPath}"); return; }
             _mapFolders.Add(d.SelectedPath);
             _mapPicker.Items.Add(Path.GetFileName(d.SelectedPath));
             _mapPicker.SelectedIndex = _mapPicker.Items.Count - 1;
+            _convertAll.Enabled = true;
         }
 
         void PickFolder(TextBox target, Action after)
@@ -187,6 +261,7 @@ namespace SanctuaryMapConverter.Gui
             target.Text = d.SelectedPath;
             after?.Invoke();
             RefreshMapList();
+            SaveSettings();
         }
 
         string OutputRoot(string sanctuary) => sanctuary.Length > 0
@@ -217,6 +292,49 @@ namespace SanctuaryMapConverter.Gui
                 var result = new Converter(o, log).Run();
                 if (deploy) Deployer.Deploy(result.MapDir, sanctuary, log);
                 log($"DONE  {result.DisplayName}: {result.Spawns} spawns, {result.Alloys} alloys, {result.Props:n0} props");
+            });
+        }
+
+        /// Convert every map in the list. One failure - a campaign map with no
+        /// spawns, a pre-Forged-Alliance format - must not stop the rest, so
+        /// each is caught and counted and the run carries on.
+        void RunConvertAll()
+        {
+            if (_mapFolders.Count == 0) { Log("no maps listed - set the maps folder first"); return; }
+            var sources = _mapFolders.ToList();
+            bool cc0 = _modeCc0.Checked;
+            string biome = (string)_convBiome.SelectedItem;
+            string scd = _faPath.Text.Length > 0 ? GamePaths.ScdPath(_faPath.Text) : null;
+            string sanctuary = _sanctuaryPath.Text;
+            bool deploy = _deploy.Checked && sanctuary.Length > 0;
+            string outRoot = OutputRoot(sanctuary);
+            string packDir = _packDir, tableCsv = _tableCsv;
+
+            RunJob(_convertAll, $"- converting {sources.Count} maps ({(cc0 ? "CC0 textures" : "FA textures")}) -", log =>
+            {
+                int ok = 0;
+                var failed = new List<string>();
+                foreach (var src in sources)
+                {
+                    string name = Path.GetFileName(src);
+                    try
+                    {
+                        var result = new Converter(new ConvertOptions
+                        {
+                            Source = src, Cc0Textures = cc0, Biome = biome, ScdPath = scd,
+                            PackDir = packDir, TableCsv = tableCsv, OutputMapsRoot = outRoot,
+                        }, _ => { }).Run();
+                        if (deploy) Deployer.Deploy(result.MapDir, sanctuary, _ => { });
+                        ok++;
+                        log($"  OK    {result.DisplayName}");
+                    }
+                    catch (Exception e)
+                    {
+                        failed.Add(name);
+                        log($"  SKIP  {name}: {e.Message}");
+                    }
+                }
+                log($"DONE  {ok} converted, {failed.Count} skipped -> {outRoot}");
             });
         }
 

@@ -153,9 +153,11 @@ namespace SanctuaryMapConverter
                 Console.Error.WriteLine("source-texture mode needs a Forged Alliance install (env.scd); use --cc0 or install FA");
                 return 2;
             }
-            if (o.Cc0Textures && (o.PackDir == null || !File.Exists(o.TableCsv)))
+            if (o.Cc0Textures && !GamePaths.HaveCc0Data(o.PackDir, o.TableCsv))
             {
-                Console.Error.WriteLine("CC0 mode needs the bundled data (texturepack + texture-map.csv) next to the exe");
+                Console.Error.WriteLine(
+                    "CC0 mode needs a 'data' folder beside the exe holding texture-map.csv and texturepack\\ " +
+                    "- download texturepack.zip from the release, or build it with --tool build-texturepack");
                 return 2;
             }
 

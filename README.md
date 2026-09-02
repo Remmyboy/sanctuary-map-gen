@@ -5,69 +5,42 @@ Map tooling for **Sanctuary: Shattered Sun** — a converter that rebuilds
 procedural map generator, and a validation stack that checks a map is actually
 playable before it ships.
 
-Everything is C# compiled at run time by PowerShell drivers. There is no build
-step: run a script and it works.
+It ships as one self-contained Windows exe: no .NET install, no PowerShell, no
+setup. Download it, run it, point it at your maps.
 
 **289 of the 299 Supreme Commander maps on this machine convert (97%).** Seven
 of the rest are campaign maps with no skirmish spawns, refused correctly; one
 is non-square (also a campaign map); two are undiagnosed.
 
 ---
-
 ## Quick start
 
-Convert a Supreme Commander map with its own textures (local play only — the
-result contains GPG/Square Enix art):
+**Download the [latest release](../../releases/latest)**, unzip it anywhere,
+and run `SanctuaryMapConverter.exe`. It is a single self-contained Windows
+build — no .NET install, no PowerShell, no setup — and it finds your Supreme
+Commander and Sanctuary installs on its own. If it cannot (a portable copy, a
+second drive, a network share), point it at them with the Browse buttons and
+it remembers.
 
-```
-pwsh -File Convert-ScMap.ps1 -Source "C:\...\My Games\...\Maps\loki_-_faf_version.v0004" -Force
-```
+The window does three things: convert one Supreme Commander map, convert every
+map in a folder, or generate a fresh random one — then deploy them into the
+game. Conversion offers two texture modes:
 
-The same map with CC0 substitutes (shareable — no third-party art):
-
-```
-pwsh -File Convert-ScMap.ps1 -Source "...\Maps\loki_-_faf_version.v0004" -Cc0Textures -Name "~SC-Loki_CC0" -Force
-```
-
-Generate random maps, deploy everything, audit what is deployed:
-
-```
-pwsh -File New-RandomMap.ps1 -Count 6 -Size 512 -Players 2 -Force
-pwsh -File Deploy-All.ps1
-pwsh -File tools\Show-Sanmap.ps1 -MapDir "F:\...\Sanctuary_Data\Maps\Riverbreak"
-```
+- **Original FA textures** — enabled when the app finds `env.scd` in *your*
+  Forged Alliance install. The exe ships zero Gas Powered Games art; the
+  textures come from the copy of the game you own, and the result is for
+  **local play only**.
+- **CC0 substitutes** — shareable, because nothing in the result is anyone
+  else's art. Needs `data\texturepack\` beside the exe: download
+  `texturepack.zip` from the release, or build it once yourself with
+  `SanctuaryMapConverter.exe --tool build-texturepack`. It is 325 MB of
+  [ambientCG](https://ambientcg.com) material, which is why it is a separate
+  download rather than part of the repo.
 
 **Restart the game after deploying.** The engine snapshots map files at load
 and will not notice changes underneath it.
 
----
-
-## The app
-
-The whole toolchain ships as one standalone Windows exe — no PowerShell, no
-.NET install, no setup:
-
-```
-app/SanctuaryMapConverter/     .NET 8 app: converter, generators, validator, deploy
-```
-
-Build with `dotnet publish -c Release`, then copy `texturepack/` and
-`docs/texture-map.csv` into a `data/` folder next to the exe (that folder is
-the CC0 library, and everything in it is redistributable). The window has two
-jobs — convert a Supreme Commander map, or generate a random one — and
-auto-detects the Steam installs. Conversion offers both texture modes:
-
-- **CC0 textures** — always available; uses the bundled data.
-- **Original FA textures** — only enabled when the app finds `env.scd` in
-  *your* Forged Alliance install. The exe ships zero GPG art; the source
-  textures come from the copy of the game you own, and the result stays on
-  your machine.
-
-The same engine sources (`src/*.cs`) are compiled into the exe directly, and
-every mode is golden-mastered against the PowerShell pipeline: identical
-binaries byte for byte, semantically identical JSON, and the game's own
-parsers (Newtonsoft into `EM.Map.SanMap`, plus the engine's `json.lua` via
-KeraLua) accept the output. Headless verbs for scripting:
+Headless verbs, for scripting a batch:
 
 ```
 SanctuaryMapConverter.exe --convert "C:\...\Maps\SCMP_009" --cc0
@@ -78,15 +51,32 @@ SanctuaryMapConverter.exe --validate "...\Maps\X\X.sanmap" --check-textures --lu
 SanctuaryMapConverter.exe --deploy-all
 ```
 
-The PowerShell scripts remain in the repo as the reference implementation the
-exe is golden-mastered against; the exe is the canonical toolchain. One
-behavioral note for anyone extending the app: PowerShell ran every script in
-a fresh process, so `MapGen`'s statics always started at compiled defaults —
-in-process the app restores that with `EngineState.Reset()` at the top of
-every run, and anything new that drives `MapGen` must do the same.
-
 ---
 
+## Building it yourself
+
+```
+dotnet publish app/SanctuaryMapConverter/SanctuaryMapConverter.csproj ^
+  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+```
+
+`PublishSingleFile` cannot embed the WinForms native libraries, so the handful
+of DLLs next to the exe in `publish\` are part of the build — ship the folder,
+not just the .exe. The engine sources in `src/*.cs` compile straight into it,
+and `docs\texture-map.csv` and `docs\unit-wrecks.csv` are copied to `data\`
+automatically. Pushing a `v*` tag runs `.github/workflows/release.yml`, which
+does all of the above and attaches the zip to a GitHub release.
+
+The four validators run against the game's own code — Newtonsoft into
+`EM.Map.SanMap`, and the engine's `json.lua` through KeraLua — so a map that
+passes has been parsed by the same libraries the game will use on it.
+
+One behavioural note for anyone extending the app: `MapGen` keeps its state in
+statics, and a batch run converts many maps in one process. `EngineState.Reset()`
+at the top of every run restores the compiled defaults; anything new that
+drives `MapGen` must do the same.
+
+---
 ## What transfers
 
 Everything the source map is, short of decals:
@@ -98,7 +88,7 @@ Everything the source map is, short of decals:
 | Mass / Hydrocarbon markers | alloy spots |
 | `ARMY_n` markers | spawns, one army each |
 | playable area | the author's `AREA_1` rectangle, guarded (see below) |
-| lighting | sun azimuth/altitude, warmth, brightness and fog thickness from the source's lighting block, clamped to the shipped ranges; the biome (`-Biome`, default Tropical) fills in the rest |
+| lighting | sun azimuth/altitude, warmth, brightness and fog thickness from the source's lighting block, clamped to the shipped ranges; the biome (the GUI's Lighting biome, or `--biome`; default Tropical) fills in the rest |
 | stratum textures | carried (default) or substituted with CC0 (option) |
 | splat weights | the author's own masks, resampled to `heightmapResolution` |
 | normal maps | the author's true normal **per layer** |
@@ -159,8 +149,8 @@ eleven of SupCom's, a format Unity cannot load — are transcoded to DXT5 with
 the colour block copied bit-exact. The result looks closest to the original
 and is **local-play only**: the folder contains someone else's art.
 
-**`-Cc0Textures`: substitutes from a CC0 library** (ambientCG; ~30 materials,
-built by `tools\Build-TexturePack.ps1`). The result is yours to share. Each of
+**CC0 mode: substitutes from a CC0 library** (ambientCG; ~30 materials,
+built by `--tool build-texturepack`). The result is yours to share. Each of
 the 312 corpus textures maps onto a same-role material via measured statistics:
 
 - **chroma** (mean colour direction),
@@ -172,14 +162,14 @@ A per-channel `diffuseRemap` is then solved so the substitute renders the
 exact average colour the original renders (mean error 0.01/255). Sand, gravel
 and dirt share one candidate pool because **FA's texture names lie** — its
 desert "gravels" are sand in all but name. A small `$eyeOverrides` table in
-`Match-Textures.ps1` holds the few calls no metric can make ("soft", "mossy"),
+the substitution tool holds the few calls no metric can make ("soft", "mossy"),
 each backed by an in-game comparison.
 
 Two dials tame the photographic sources: `-Cc0TileMult` (default 2.5 — photo
 features are centimetre-scale where FA paints for a 4–10 m repeat) and
 `-Cc0NormalScale` (default 0.45 — photogrammetry normals are strong). CC0
 layers also get real per-material mask maps built from the sources' AO and
-roughness. `tools\Compare-MapTextures.ps1` renders any two deployed maps'
+roughness. `--tool compare-textures` renders any two deployed maps'
 layers side by side, as configured, for auditing pairs.
 
 ---
@@ -203,7 +193,7 @@ WhiteDesert set (real desert trees, chalk hoodoos) is engine-only and waits on
 the devs.
 
 A SupCom "tree group" is one object whose mesh holds several trees; it becomes
-one tree at 1.35× rather than inventing positions. `-MaxProps` (default
+one tree at 1.35× rather than inventing positions. `--no-props` turns them off entirely; the internal cap (default
 20,000) thins evenly and reports what it dropped.
 
 ---
@@ -240,13 +230,13 @@ renders: a placeholder with splat weight, a texture in an unloadable format, a
 lighting field an order of magnitude out. None fail, none log, all look like
 terrain.
 
-| tool | what it catches |
+| check | what it catches |
 |---|---|
-| `Test-Sanmap.ps1` | the game's own Newtonsoft parse; asset resolution per build tree; splat weight on placeholder textures; DXT3 in the map folder |
-| `Test-LuaJson.ps1` | the game's own `json.lua` (stricter than Newtonsoft) |
-| `Test-Deployed.ps1` | all of the above against both deployed trees; runs from `Deploy-All.ps1` |
-| `Test-Environment.ps1` | the ~30 lighting/fog fields against the range the shipped maps use |
-| `Test-BiomeTextures.ps1` | every biome-table texture has albedo, normal and mask |
+| `--validate` | the game's own Newtonsoft parse into `EM.Map.SanMap`; asset resolution per build tree; splat weight on placeholder textures; DXT3 in the map folder |
+| `--validate --lua` | the game's own `json.lua` (stricter than Newtonsoft) |
+| `--deploy-all` | all of the above against every deployed tree, after mirroring |
+| `--tool test-environment` | the ~30 lighting/fog fields against the range the shipped maps use |
+| `--tool test-biome-textures` | every biome-table texture has albedo, normal and mask |
 
 Playability is measured, not assumed, and reported in terms that distinguish a
 naval map from a broken one:
@@ -267,11 +257,15 @@ blocked if any neighbour in its 3×3 exceeds it.
 ## Layout
 
 ```
-Convert-ScMap.ps1       SupCom map -> Sanctuary map (the main event)
-app/SanctuaryMapConverter/  standalone .NET 8 exe: GUI + headless CLI
-New-RandomMap.ps1       random maps by style and biome
-New-*Map.ps1            four hand-tuned named maps
-Deploy-All.ps1          build + mirror to both game trees + validate
+app/SanctuaryMapConverter/  the whole toolchain: GUI + headless CLI
+        Gui/MainForm.cs   convert one map, convert a folder, generate, deploy
+        Core/Converter.cs SupCom map -> Sanctuary map (the main event)
+        Core/RandomMap.cs random maps by style and biome
+        Core/NamedMaps.*  four hand-tuned named maps
+        Core/DeployAll.cs mirror to the game trees + validate
+        Core/Validator.cs the game's own parsers, run against our output
+        Core/GamePaths.cs finds both installs: registry, Steam libraries, drives
+        Tools/            the measurement and texture-pack tools (--tool ...)
 
 src/    MapGen.cs         heightfield, stratum weights, file writers
         Generator.cs      symmetry, spawn placement, scoring
@@ -280,6 +274,7 @@ src/    MapGen.cs         heightfield, stratum weights, file writers
         Terrain.cs        route finding, clearance, chokepoints, overlook
         ScMap.cs          .scmap and _save.lua reader
         ScMapEnvironment.cs  playable area, lighting adoption, macro-overlay bake
+        ScWrecks.cs       WRECKAGE groups -> Sanctuary wreck props
         ScMapTextures.cs  anchored texture-block scanner (10 albedos + 9 normals)
         ScMapSplat.cs     splat adoption, incl. DXT5-compressed masks
         ScMapPropScan.cs  self-locating prop-table scanner
@@ -288,26 +283,20 @@ src/    MapGen.cs         heightfield, stratum weights, file writers
         Bc7.cs / Dxt.cs / Bc3.cs / DdsMean.cs / DdsDecode.cs / DdsWrite.cs
                           DDS decode (BC1/2/3/7 means, full BC1/2/3 pixels)
                           and encode (DXT1/DXT5 with mip chains)
-        Biomes.ps1        the biome table (single source of truth)
-        Import-MapGen.ps1 compiles the C#; dot-source it
+        Biomes.ps1 / GamePaths.ps1 / Import-MapGen.ps1
+                          support for the tools/ dev scripts below
 
-tools/  Measure-ScTextures.ps1   measure + classify every corpus texture
-        Build-TexturePack.ps1    fetch CC0 materials, encode DDS + mask maps
-        Match-Textures.ps1       solve the substitution table
-        Export-ScTextures.ps1    extract source textures into a map folder
-        Export-Cc0Textures.ps1   the CC0 equivalent
-        Export-ScDecals.ps1      author map-local decal blueprints (parked)
-        Compare-MapTextures.ps1  two deployed maps, layer by layer, as configured
-        Write-NeutralMask.ps1    the shared mask, from measured shipped means
-        Show-Sanmap.ps1          render and audit a deployed map from its bytes
-        Test-*.ps1               the validation stack (see above)
-        Measure-*.ps1            corpus statistics (markers, terrain, lanes)
-        Grab-Editor.ps1          screenshot the map editor window
-        New-MaskProbe.ps1        test maps that sweep one mask channel each
+tools/  dev scripts, not needed to use the converter. Most are ported into
+        the exe's --tool verbs; these remain for the jobs that are still
+        one-offs - Measure-ScUnits.ps1 (regenerates docs/unit-wrecks.csv),
+        Grab-Editor.ps1, New-MaskProbe.ps1, and the decal work that is parked.
 
-texturepack/   generated: CC0 DDS library + manifest (rebuild with
-               Build-TexturePack.ps1; downloads cache locally)
-docs/          generated measurement CSVs + the substitution table
+texturepack/   not in the repo: 325 MB of CC0 DDS + manifest, built by
+               `--tool build-texturepack` (downloads cache locally) or
+               downloaded from the release
+docs/          generated measurement CSVs, the substitution table, the unit
+               table, and tuning-notes.md - the dials chosen from statistics
+               rather than from the screen
 ```
 
 ---
@@ -343,7 +332,7 @@ names the channels (`_MaskmapMetal`, `_MaskmapAO`, `_MaskmapSmoothness`):
 A flat mid-grey placeholder — the obvious "safe middle" — is wrong in every
 channel and put a wet-plastic sheen over every converted map. So did
 `skylightIntensity` 6000, where every shipped map uses exactly 0.
-`Test-Environment.ps1` exists so the next out-of-range value is caught by a
+`--tool test-environment` exists so the next out-of-range value is caught by a
 tool instead of an eye.
 
 **Stratum TGAs** are 18-byte header, type 2, 32bpp BGRA, rows bottom-up;
@@ -366,7 +355,7 @@ the nav limit are linear, not eased.
 ## The generator, and what 300 real maps say
 
 The generator's numbers come from measuring 291 SupCom maps and 47 shipped
-Sanctuary maps (`Measure-ScCorpus.ps1`, `Measure-Sanmaps.ps1`), not from
+Sanctuary maps (`--tool measure-sc-corpus`, `--tool measure-sanmaps`), not from
 invention. The short version:
 
 - **Every spawn gets a ring of alloys** — 3–5 within 6–16 m; three
@@ -379,8 +368,8 @@ invention. The short version:
 - **Spawn separation depends on player count** — measured closest-pair
   fractions: 2P 0.84, 4P 0.39, 6P 0.24, 8P 0.15.
 
-Structure is measured the same way (`Measure-ScTerrain.ps1`,
-`Measure-SanTerrain.ps1`): the route between the two furthest spawns is found
+Structure is measured the same way (`--tool measure-sc-terrain`,
+`--tool measure-san-terrain`): the route between the two furthest spawns is found
 and judged — clearance, sustained pinches, overlook by high ground. The
 generator once produced lanes 2–4× narrower than SupCom's and routes hemmed in
 by high ground three times as often; lane clearance, directness and overlook
@@ -402,7 +391,7 @@ are now gated directly, and a candidate re-rolls on any failure:
 
 Maps go in `<install>\engine\Sanctuary_Data\Maps\` for play and
 `<install>\map-editor\SanctuaryMapEditor_Data\Maps\` for the editor — same
-content, different prop extension. `Deploy-All.ps1` does both and validates
+content, different prop extension. `--deploy-all` does both and validates
 everything it deployed. Restart the game afterwards; it caches map files at
 load.
 
@@ -419,5 +408,5 @@ materials (CC0 — no attribution required, included here with thanks anyway).
 
 Converted maps remain the work of their original authors. A map converted with
 its source textures contains Gas Powered Games / Square Enix art and is for
-**local play only**; the `-Cc0Textures` mode exists so a conversion can be
+**local play only**; the CC0 mode exists so a conversion can be
 shared. Either way, credit the mapper.

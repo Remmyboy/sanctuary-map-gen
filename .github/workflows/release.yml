@@ -1,0 +1,86 @@
+# Build the converter and attach it to a GitHub release.
+#
+# Push a tag (v1.0.0, v1.1.0, ...) and this produces a single self-contained
+# Windows exe that needs no .NET install, zipped with the small data files it
+# reads at run time.
+#
+# The CC0 texturepack - 325 MB of ambientCG material, redistributable but far
+# too big for the repo - is deliberately NOT built here: it would mean
+# downloading a third party's whole library on every tag, and a release should
+# not fail because someone else's server is slow. Build it once with
+#   SanctuaryMapConverter.exe --tool build-texturepack
+# and attach texturepack.zip to the release by hand; it changes rarely.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish
+        run: >
+          dotnet publish app/SanctuaryMapConverter/SanctuaryMapConverter.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -o publish
+
+      - name: Stage the release folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force staging\data | Out-Null
+          # Everything but the symbols: PublishSingleFile cannot embed the
+          # WinForms/WPF native DLLs, so they sit beside the exe and the exe
+          # will not start without them. Copying only the .exe ships a build
+          # that fails on someone else's machine.
+          Copy-Item publish\* staging\ -Recurse -Exclude *.pdb
+          Copy-Item docs\texture-map.csv staging\data\ -Force
+          Copy-Item docs\unit-wrecks.csv staging\data\ -Force
+          Copy-Item README.md            staging\
+          Get-ChildItem -Recurse staging | Select-Object FullName, Length
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') { $env:GITHUB_REF -replace '^refs/tags/', '' } else { 'dev' }
+          Compress-Archive -Path staging\* -DestinationPath "SanctuaryMapConverter-$tag-win-x64.zip"
+          "ZIP=SanctuaryMapConverter-$tag-win-x64.zip" | Out-File -Append $env:GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SanctuaryMapConverter-win-x64
+          path: ${{ env.ZIP }}
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP }}
+          body: |
+            Single-file Windows build - no .NET install needed.
+
+            Unzip anywhere and run `SanctuaryMapConverter.exe`. It finds your
+            Supreme Commander and Sanctuary installs on its own; if it cannot,
+            point it at them with the Browse buttons and it remembers.
+
+            **CC0 texture mode** additionally needs `data\texturepack\`.
+            Download `texturepack.zip` from this release if it is attached, or
+            build it yourself once with:
+
+                SanctuaryMapConverter.exe --tool build-texturepack
+
+            Converting with the original Forged Alliance textures needs no
+            extra data - it reads your own install - but those maps contain
+            Gas Powered Games art and are for local play only.

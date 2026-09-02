@@ -21,4 +21,16 @@
     <Compile Include="..\..\src\*.cs" LinkBase="Engine" />
   </ItemGroup>
 
+  <!-- The data the exe reads at run time, laid out the way FindDataDir looks
+       for it: a "data" folder beside the exe. The substitution table and the
+       unit table are small and always shipped; the CC0 texturepack is 325 MB
+       and is not in the repo, so it is fetched or built separately and
+       dropped into the same folder. -->
+  <ItemGroup>
+    <None Include="..\..\docs\texture-map.csv" Link="data\texture-map.csv"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\docs\unit-wrecks.csv" Link="data\unit-wrecks.csv"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -29,9 +29,17 @@ namespace SanctuaryMapConverter.Core
             string engineMaps = GamePaths.EngineMaps(sanctuaryInstall);
             string editorMaps = GamePaths.EditorMaps(sanctuaryInstall);
 
+            // The Playtest build ships no map editor. Everything below that
+            // targets the editor tree is then a no-op rather than an error:
+            // deploying to the game is the job, and the editor is a bonus.
+            bool haveEditor = Directory.Exists(editorMaps);
+            if (!haveEditor) log("No map editor in this install - deploying to the game tree only.");
+
             if (!skipRebuild)
                 foreach (var (name, build) in Named)
-                    foreach (var (root, ext) in new[] { (engineMaps, ".santp"), (editorMaps, ".sanprop") })
+                    foreach (var (root, ext) in haveEditor
+                        ? new[] { (engineMaps, ".santp"), (editorMaps, ".sanprop") }
+                        : new[] { (engineMaps, ".santp") })
                     {
                         log($"Building {name} -> {Path.GetFileName(Path.GetDirectoryName(root))}");
                         var lines = new List<string>();
@@ -45,6 +53,7 @@ namespace SanctuaryMapConverter.Core
             foreach (var dir in Directory.EnumerateDirectories(engineMaps))
             {
                 string name = Path.GetFileName(dir);
+                if (!haveEditor) continue;
                 if (!name.StartsWith("~GEN-") && !name.StartsWith("~SC-")) continue;
                 string dest = Path.Combine(editorMaps, name);
                 if (Directory.Exists(dest)) Directory.Delete(dest, true);
@@ -56,8 +65,8 @@ namespace SanctuaryMapConverter.Core
             }
 
             log("");
-            log("In the map editor:");
-            foreach (var dir in Directory.EnumerateDirectories(editorMaps).OrderBy(d => d))
+            if (haveEditor) log("In the map editor:");
+            foreach (var dir in (haveEditor ? Directory.EnumerateDirectories(editorMaps) : Enumerable.Empty<string>()).OrderBy(d => d))
             {
                 string f = Directory.EnumerateFiles(dir, "*.sanmap").FirstOrDefault();
                 if (f == null) continue;
@@ -79,7 +88,7 @@ namespace SanctuaryMapConverter.Core
                     Path.GetFileName(dir), j.GetProperty("width").GetInt32(), spawns, alloys, water));
             }
             log("");
-            log("Restart the map editor before opening these.");
+            if (haveEditor) log("Restart the map editor before opening these.");
 
             // Validate before declaring victory. Every fault this project
             // shipped was something absent or in the wrong format, and each
