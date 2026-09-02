@@ -40,15 +40,20 @@ jobs:
       - name: Stage the release folder
         shell: pwsh
         run: |
+          # Copy the whole publish folder, symbols aside: PublishSingleFile
+          # cannot embed the WinForms native DLLs, so they sit beside the exe
+          # and it will not start without them. Shipping only the .exe gives
+          # a build that fails on someone else's machine.
+          #
+          # Copied wholesale rather than into a folder we made first: the
+          # build already puts the CSVs in publish\data, and -Recurse onto an
+          # existing directory of the same name is an error.
+          Copy-Item publish staging -Recurse
+          Remove-Item staging\*.pdb -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force staging\data | Out-Null
-          # Everything but the symbols: PublishSingleFile cannot embed the
-          # WinForms/WPF native DLLs, so they sit beside the exe and the exe
-          # will not start without them. Copying only the .exe ships a build
-          # that fails on someone else's machine.
-          Copy-Item publish\* staging\ -Recurse -Exclude *.pdb
           Copy-Item docs\texture-map.csv staging\data\ -Force
           Copy-Item docs\unit-wrecks.csv staging\data\ -Force
-          Copy-Item README.md            staging\
+          Copy-Item README.md            staging\ -Force
           Get-ChildItem -Recurse staging | Select-Object FullName, Length
 
       - name: Zip
