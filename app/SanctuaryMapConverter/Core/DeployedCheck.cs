@@ -13,10 +13,13 @@ namespace SanctuaryMapConverter.Core
     // all of them over both trees.
     public static class DeployedCheck
     {
-        static readonly string[] OurNamed = { "Riverbreak", "Cleftwater", "Broken_Mesa", "Serpent_Crossing" };
+        // Which deployed maps are ours to check? The folder name used to say
+        // so - a "~SC-" prefix - but a converted map now carries its own
+        // name, so the .sanmap says it instead: the converter stamps where
+        // the map came from into `credits`, and no shipped map does.
+        const string ConvertedMarker = "Converted from Supreme Commander";
 
-        static bool IsOurs(string name) =>
-            name.StartsWith("~GEN-") || name.StartsWith("~SC-") || OurNamed.Contains(name);
+        static bool IsOurs(string sanmapText) => sanmapText.Contains(ConvertedMarker);
 
         public static bool Run(string engineMaps, string editorMaps, string gamedata,
             string managedDir, string reference, Action<string> log)
@@ -42,12 +45,13 @@ namespace SanctuaryMapConverter.Core
                 foreach (var dir in Directory.EnumerateDirectories(root).OrderBy(d => d))
                 {
                     string name = Path.GetFileName(dir);
-                    if (!IsOurs(name)) continue;   // leave the shipped maps alone
                     string f = Directory.EnumerateFiles(dir, "*.sanmap").FirstOrDefault();
                     if (f == null) continue;
 
-                    var issues = new List<string>();
                     string raw = File.ReadAllText(f);
+                    if (!IsOurs(raw)) continue;   // leave the shipped maps alone
+
+                    var issues = new List<string>();
                     using var doc = JsonDocument.Parse(raw);
                     var j = doc.RootElement;
 
@@ -100,9 +104,8 @@ namespace SanctuaryMapConverter.Core
             foreach (var dir in Directory.EnumerateDirectories(engineMaps).OrderBy(d => d))
             {
                 string name = Path.GetFileName(dir);
-                if (!IsOurs(name)) continue;
                 string f = Directory.EnumerateFiles(dir, "*.sanmap").FirstOrDefault();
-                if (f == null) continue;
+                if (f == null || !IsOurs(File.ReadAllText(f))) continue;
 
                 var lines = new List<string>();
                 bool ok = Validator.Check(f, new ValidateOptions

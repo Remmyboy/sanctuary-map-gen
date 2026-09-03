@@ -1,4 +1,4 @@
-# Build the converter and attach it to a GitHub release.
+# Build SCFA > Sanctuary Map Converter and attach it to a GitHub release.
 #
 # Push a tag (v1.0.0, v1.1.0, ...) and this produces a single self-contained
 # Windows exe that needs no .NET install, zipped with the small data files it

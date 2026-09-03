@@ -4,10 +4,11 @@ using SanctuaryMapConverter.Core;
 
 namespace SanctuaryMapConverter.Gui
 {
-    // One window, two jobs: convert a Supreme Commander map, or generate a
-    // random one - then deploy. The FA-textures mode is gated on the user's
-    // own Forged Alliance install: the tool ships no GPG art, and if env.scd
-    // is not on this machine the option simply is not available.
+    // One window, one job: convert Supreme Commander: Forged Alliance maps
+    // into Sanctuary maps, one at a time or a folder at a time, and deploy
+    // them. The FA-textures mode is gated on the user's own Forged Alliance
+    // install: the tool ships no GPG art, and if env.scd is not on this
+    // machine the option simply is not available.
     public sealed class MainForm : Form
     {
         // -- convert --
@@ -19,14 +20,6 @@ namespace SanctuaryMapConverter.Gui
         readonly Button _convertAll = new() { Text = "Convert all", Width = 120, Height = 26 };
         readonly TextBox _mapsFolder = new() { Width = 340 };
 
-        // -- generate --
-        readonly ComboBox _style = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
-        readonly ComboBox _biome = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
-        readonly ComboBox _size = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 70 };
-        readonly ComboBox _players = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 50 };
-        readonly TextBox _seed = new() { Width = 90, PlaceholderText = "random" };
-        readonly NumericUpDown _count = new() { Width = 50, Minimum = 1, Maximum = 20, Value = 1 };
-        readonly Button _generate = new() { Text = "Generate", Width = 120, Height = 32 };
 
         // -- shared --
         readonly TextBox _faPath = new() { Width = 340 };
@@ -44,7 +37,7 @@ namespace SanctuaryMapConverter.Gui
 
         public MainForm()
         {
-            Text = "Sanctuary Map Converter";
+            Text = "SCFA > Sanctuary Map Converter";
             Width = 940; Height = 760;
             StartPosition = FormStartPosition.CenterScreen;
 
@@ -58,7 +51,7 @@ namespace SanctuaryMapConverter.Gui
             paths.Controls.Add(_deploy);
             paths.Controls.Add(new Label());
 
-            var convertBox = new GroupBox { Text = "Convert a Supreme Commander map", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(10) };
+            var convertBox = new GroupBox { Text = "Convert a Supreme Commander: Forged Alliance map", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(10) };
             var ct = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 3 };
             ct.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             ct.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -84,36 +77,13 @@ namespace SanctuaryMapConverter.Gui
             AddRow(ct, "Lighting biome", _convBiome, new Label());
             convertBox.Controls.Add(ct);
 
-            var genBox = new GroupBox { Text = "Generate a random map", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(10) };
-            var gf = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
-            _style.Items.AddRange(new object[] { "Random", "RiverCrossing", "Mesas", "Plateaus", "Basin", "Open" });
-            _biome.Items.AddRange(new object[] { "Random", "Highlands", "Tropical", "Winter", "Evergreen", "Arid" });
-            _size.Items.AddRange(new object[] { "256", "512", "1024", "2048" });
-            _players.Items.AddRange(new object[] { "2", "3", "4", "6", "8" });
-            _style.SelectedIndex = 0; _biome.SelectedIndex = 0;
-            _size.SelectedItem = "512"; _players.SelectedItem = "2";
-            foreach (var (lbl, c) in new (string, Control)[]
-            {
-                ("Style", _style), ("Biome", _biome), ("Size", _size),
-                ("Players", _players), ("Seed", _seed), ("Count", _count),
-            })
-            {
-                gf.Controls.Add(new Label { Text = lbl, AutoSize = true, Margin = new Padding(6, 8, 2, 0) });
-                gf.Controls.Add(c);
-            }
-            gf.Controls.Add(_generate);
-            _generate.Margin = new Padding(18, 2, 2, 2);
-            genBox.Controls.Add(gf);
-
             Controls.Add(_log);
             // Dock order: last added Top control sits highest.
-            Controls.Add(genBox);
             Controls.Add(convertBox);
             Controls.Add(paths);
 
             _convert.Click += (_, _) => RunConvert();
             _convertAll.Click += (_, _) => RunConvertAll();
-            _generate.Click += (_, _) => RunGenerate();
             Load += (_, _) => Detect();
         }
 
@@ -151,12 +121,12 @@ namespace SanctuaryMapConverter.Gui
             RefreshFaGate();
             RefreshMapList();
 
-            Log("Sanctuary Map Converter");
+            Log("SCFA > Sanctuary Map Converter");
             Log($"  Forged Alliance: {(_faPath.Text.Length > 0 ? _faPath.Text : "not found - FA-textures mode disabled")}");
             Log($"  Sanctuary:       {(_sanctuaryPath.Text.Length > 0 ? _sanctuaryPath.Text : "not found - set it to deploy")}");
             Log($"  CC0 library:     {(_modeCc0.Enabled ? _packDir : "missing")}");
             if (_mapFolders.Count > 0)
-                Log($"  {_mapFolders.Count} source maps found. Convert one, convert them all, or generate a fresh random map.");
+                Log($"  {_mapFolders.Count} source maps found. Convert one, or convert them all.");
             else
                 Log("  No source maps found - set 'Maps folder' to your Forged Alliance maps folder " +
                     "(its own \\maps, or Documents\\My Games\\Gas Powered Games\\Supreme Commander Forged Alliance\\Maps).");
@@ -335,46 +305,6 @@ namespace SanctuaryMapConverter.Gui
                     }
                 }
                 log($"DONE  {ok} converted, {failed.Count} skipped -> {outRoot}");
-            });
-        }
-
-        void RunGenerate()
-        {
-            string sanctuary = _sanctuaryPath.Text;
-            bool deploy = _deploy.Checked && sanctuary.Length > 0;
-            int seed = -1;
-            if (_seed.Text.Trim().Length > 0 && !int.TryParse(_seed.Text.Trim(), out seed))
-            {
-                Log("seed must be a number (or blank for random)");
-                return;
-            }
-
-            var o = new RandomMapOptions
-            {
-                Seed = seed,
-                Size = int.Parse((string)_size.SelectedItem),
-                Players = int.Parse((string)_players.SelectedItem),
-                Style = (string)_style.SelectedItem,
-                Biome = (string)_biome.SelectedItem,
-                Count = (int)_count.Value,
-                MapsRoot = OutputRoot(sanctuary),
-                Force = true,
-                Validate = sanctuary.Length > 0 ? new ValidateOptions
-                {
-                    Managed = GamePaths.ManagedDir(sanctuary),
-                    CheckTextures = true,
-                    LuaCheck = true,
-                    GameRoot = sanctuary,
-                } : null,
-            };
-
-            RunJob(_generate, $"- generating {o.Count} {o.Style}/{o.Biome} map(s) -", log =>
-            {
-                var results = RandomMap.Run(o, log);
-                foreach (var r in results.Where(r => r.Accepted && deploy))
-                    Deployer.Deploy(r.MapDir, sanctuary, log);
-                int ok = results.Count(r => r.Accepted);
-                log($"DONE  {ok} of {results.Count} map(s) generated");
             });
         }
 

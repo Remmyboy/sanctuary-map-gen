@@ -10,3 +10,6 @@ maps/
 # .NET build output
 app/*/bin/
 app/*/obj/
+
+# Built artifact, attached to releases rather than tracked (291 MB).
+texturepack.zip

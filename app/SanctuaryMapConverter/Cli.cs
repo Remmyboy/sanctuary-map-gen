@@ -3,118 +3,56 @@ using SanctuaryMapConverter.Core;
 namespace SanctuaryMapConverter
 {
     // Headless mode: the same orchestration the window drives, callable from
-    // a terminal. This is what the golden-master tests use to prove the port
-    // against the PowerShell pipeline.
+    // a terminal, for scripting a batch of conversions.
     //
     //   SanctuaryMapConverter --convert <sourceFolder> [--cc0] [--biome B] [--name X]
     //       [--out <mapsRoot>] [--deploy] [--prop-ext .santp|.sanprop] [--no-props]
-    //   SanctuaryMapConverter --generate [--seed N] [--size 512] [--players 2]
-    //       [--style S] [--biome B] [--count N] [--name X] [--out dir]
-    //       [--prop-ext E] [--no-props] [--debug-dir D] [--force] [--no-validate]
     //   SanctuaryMapConverter --validate <path.sanmap> [--check-textures]
-    //       [--gamedata <dir>] [--lua]
+    //       [--gamedata <dir>] [--lua] [--managed <dir>]
+    //   SanctuaryMapConverter --check-deployed
+    //   SanctuaryMapConverter --tool <name> [...]
     internal static class Cli
     {
         public static int Run(string[] args) => args[0] switch
         {
             "--convert" => Convert(args),
-            "--generate" => Generate(args),
             "--validate" => Validate(args),
-            "--deploy-all" => DeployAllCmd(args),
-            "--flat" => Flat(args),
-            "--named" => NamedCmd(args),
+            "--check-deployed" => CheckDeployedCmd(args),
             "--tool" => Tools.ToolsCli.Run(args),
             _ => Usage(),
         };
 
-        static int NamedCmd(string[] args)
-        {
-            string which = null, outRoot = null, propExt = ".santp";
-            bool validate = true;
-            for (int i = 1; i < args.Length; i++)
-            {
-                switch (args[i])
-                {
-                    case "--out": outRoot = args[++i]; break;
-                    case "--prop-ext": propExt = args[++i]; break;
-                    case "--no-validate": validate = false; break;
-                    default: which = args[i]; break;
-                }
-            }
-            string sanctuary = GamePaths.FindSanctuaryInstall();
-            outRoot ??= sanctuary != null
-                ? GamePaths.EngineMaps(sanctuary)
-                : Path.Combine(Environment.CurrentDirectory, "generated");
-            var v = validate && sanctuary != null ? new ValidateOptions
-            {
-                Managed = GamePaths.ManagedDir(sanctuary),
-                CheckTextures = true,
-                GameRoot = sanctuary,
-            } : null;
-
-            switch (which?.ToLowerInvariant())
-            {
-                case "serpent": case "serpent-crossing": NamedMaps.RiverMap(outRoot, propExt, Console.WriteLine, v); return 0;
-                case "riverbreak": NamedMaps.RiverbreakMap(outRoot, propExt, Console.WriteLine, v); return 0;
-                case "cleftwater": case "cleft": NamedMaps.CleftMap(outRoot, propExt, Console.WriteLine, v); return 0;
-                case "broken-mesa": case "organic": NamedMaps.OrganicMap(outRoot, propExt, Console.WriteLine, v); return 0;
-                default:
-                    Console.Error.WriteLine("--named wants one of: serpent, riverbreak, cleftwater, broken-mesa");
-                    return 2;
-            }
-        }
-
         static int Usage()
         {
-            Console.Error.WriteLine("usage: --convert <sourceFolder> [...] | --generate [...] | --validate <map.sanmap> [...] | --deploy-all [--skip-rebuild] | --flat --name <X> [...]");
+            Console.Error.WriteLine(
+                "usage: --convert <sourceFolder> [--cc0] [--biome B] [--name X] [--out dir] [--deploy]\n" +
+                "       --validate <map.sanmap> [--check-textures] [--lua]\n" +
+                "       --check-deployed\n" +
+                "       --tool <name> [...]");
             return 2;
         }
 
-        static int DeployAllCmd(string[] args)
+        /// Check every converted map already sitting in the game.
+        ///
+        /// This used to also build the named maps and mirror them into the
+        /// editor tree. Conversion deploys to both trees as it goes, so what
+        /// is left worth doing is the sweep: parse each of our deployed maps
+        /// with the game's own parsers and resolve every asset it names.
+        static int CheckDeployedCmd(string[] args)
         {
-            bool skipRebuild = Array.IndexOf(args, "--skip-rebuild") >= 0;
             string sanctuary = GamePaths.FindSanctuaryInstall();
             if (sanctuary == null)
             {
-                Console.Error.WriteLine("deploy-all needs a Sanctuary install");
+                Console.Error.WriteLine("no Sanctuary install found");
                 return 2;
             }
-            return Core.DeployAll.Run(sanctuary, skipRebuild, Console.WriteLine) ? 0 : 1;
-        }
-
-        static int Flat(string[] args)
-        {
-            var o = new FlatMapOptions();
-            for (int i = 1; i < args.Length; i++)
-            {
-                switch (args[i])
-                {
-                    case "--name": o.Name = args[++i]; break;
-                    case "--size": o.Size = int.Parse(args[++i]); break;
-                    case "--out": o.MapsRoot = args[++i]; break;
-                    case "--force": o.Force = true; break;
-                    default: Console.Error.WriteLine($"unknown argument: {args[i]}"); return 2;
-                }
-            }
-            if (o.Name == null)
-            {
-                Console.Error.WriteLine("--flat needs --name <display name>");
-                return 2;
-            }
-            string sanctuary = GamePaths.FindSanctuaryInstall();
-            o.MapsRoot ??= sanctuary != null
-                ? GamePaths.EditorMaps(sanctuary)
-                : Path.Combine(Environment.CurrentDirectory, "generated");
-            try
-            {
-                FlatMap.Run(o, Console.WriteLine);
-                return 0;
-            }
-            catch (Exception e)
-            {
-                Console.Error.WriteLine("FAIL " + e.Message);
-                return 1;
-            }
+            return DeployedCheck.Run(
+                GamePaths.EngineMaps(sanctuary),
+                GamePaths.EditorMaps(sanctuary),
+                GamePaths.GamedataDir(sanctuary),
+                GamePaths.ManagedDir(sanctuary),
+                "~TEAM-1v1_Tropical_256_47940",
+                Console.WriteLine) ? 0 : 1;
         }
 
         static int Convert(string[] args)
@@ -166,56 +104,6 @@ namespace SanctuaryMapConverter
                 var result = new Converter(o, Console.WriteLine).Run();
                 if (deploy && sanctuary != null) Deployer.Deploy(result.MapDir, sanctuary, Console.WriteLine);
                 return 0;
-            }
-            catch (Exception e)
-            {
-                Console.Error.WriteLine("FAIL " + e.Message);
-                return 1;
-            }
-        }
-
-        static int Generate(string[] args)
-        {
-            var o = new RandomMapOptions();
-            bool noValidate = false;
-            for (int i = 1; i < args.Length; i++)
-            {
-                switch (args[i])
-                {
-                    case "--seed": o.Seed = int.Parse(args[++i]); break;
-                    case "--size": o.Size = int.Parse(args[++i]); break;
-                    case "--players": o.Players = int.Parse(args[++i]); break;
-                    case "--style": o.Style = args[++i]; break;
-                    case "--biome": o.Biome = args[++i]; break;
-                    case "--count": o.Count = int.Parse(args[++i]); break;
-                    case "--name": o.Name = args[++i]; break;
-                    case "--out": o.MapsRoot = args[++i]; break;
-                    case "--prop-ext": o.PropExtension = args[++i]; break;
-                    case "--no-props": o.NoProps = true; break;
-                    case "--debug-dir": o.DebugDir = args[++i]; break;
-                    case "--force": o.Force = true; break;
-                    case "--no-validate": noValidate = true; break;
-                    default: Console.Error.WriteLine($"unknown argument: {args[i]}"); return 2;
-                }
-            }
-
-            string sanctuary = GamePaths.FindSanctuaryInstall();
-            o.MapsRoot ??= sanctuary != null
-                ? GamePaths.EngineMaps(sanctuary)
-                : Path.Combine(Environment.CurrentDirectory, "generated");
-            if (!noValidate && sanctuary != null)
-                o.Validate = new ValidateOptions
-                {
-                    Managed = GamePaths.ManagedDir(sanctuary),
-                    CheckTextures = true,
-                    LuaCheck = true,
-                    GameRoot = sanctuary,
-                };
-
-            try
-            {
-                var results = RandomMap.Run(o, Console.WriteLine);
-                return results.TrueForAll(r => r.Accepted) ? 0 : 1;
             }
             catch (Exception e)
             {

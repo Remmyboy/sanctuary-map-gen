@@ -1,9 +1,9 @@
-# sanctuary-map-gen
+# SCFA > Sanctuary Map Converter
 
-Map tooling for **Sanctuary: Shattered Sun** — a converter that rebuilds
-**Supreme Commander: Forged Alliance** maps as native Sanctuary maps, a
-procedural map generator, and a validation stack that checks a map is actually
-playable before it ships.
+Rebuilds **Supreme Commander: Forged Alliance** maps as native **Sanctuary:
+Shattered Sun** maps - terrain, textures, markers, lighting, props and
+wreckage - and checks each result against the game's own parsers before it
+ships.
 
 It ships as one self-contained Windows exe: no .NET install, no PowerShell, no
 setup. Download it, run it, point it at your maps.
@@ -24,9 +24,9 @@ Commander and Sanctuary installs on its own. If it cannot (a portable copy, a
 second drive, a network share), point it at them with the Browse buttons and
 it remembers.
 
-The window does three things: convert one Supreme Commander map, convert every
-map in a folder, or generate a fresh random one — then deploy them into the
-game. Conversion offers two texture modes:
+The window does two things: convert one Supreme Commander map, or convert
+every map in a folder - then deploy them into the game. Conversion offers two
+texture modes:
 
 - **Original FA textures** — enabled when the app finds `env.scd` in *your*
   Forged Alliance install. The exe ships zero Gas Powered Games art; the
@@ -46,11 +46,9 @@ Headless verbs, for scripting a batch:
 
 ```
 SanctuaryMapConverter.exe --convert "C:\...\Maps\SCMP_009" --cc0
-SanctuaryMapConverter.exe --generate --seed 4242 --size 512 --players 4 --style Mesas --biome Winter
-SanctuaryMapConverter.exe --named serpent | riverbreak | cleftwater | broken-mesa
-SanctuaryMapConverter.exe --flat --name "Blank Canvas" --size 512
+SanctuaryMapConverter.exe --convert "C:\...\Maps\SCMP_009" --biome Winter --deploy
 SanctuaryMapConverter.exe --validate "...\Maps\X\X.sanmap" --check-textures --lua
-SanctuaryMapConverter.exe --deploy-all
+SanctuaryMapConverter.exe --check-deployed
 ```
 
 ---
@@ -116,8 +114,7 @@ colour temperature from the sun colour's red/blue balance, intensity from
 attenuation from the source's fog band. `sunDA` incidentally now always sits
 inside the shipped range; the old fixed 34° was just outside it.
 
-**The tint carries material-aware detail** — on every map, converted or
-generated. `tint_colors` gets noise weighted by each layer's visible splat
+**The tint carries material-aware detail.** `tint_colors` gets noise weighted by each layer's visible splat
 share and its role: vegetation mottles (with a warm–cool hue tilt), sand bands
 warm, mud darkens in patches, rock stays nearly clean. Roles come from texture
 names, the same signal the CC0 substitution table was built from; noise scales
@@ -182,7 +179,7 @@ layers side by side, as configured, for auditing pairs.
 `The_Forge` is the only map the developers ship a `preview.png` with, and it
 bakes numbered, colour-coded spawn discs into the image — the lobby does not
 overlay them, so a map without them in its own preview shows none. Converted
-and generated maps get the same treatment: the badge palette was sampled from
+maps get the same treatment: the badge palette was sampled from
 that file, and sampling it *at the spawn positions its own `.sanmap` records*
 is also what confirmed the world-to-pixel mapping, since the saturated pixel
 sits under the marker only one way up (mean saturation 0.75 against 0.30
@@ -194,7 +191,7 @@ honest colour — and in CC0 mode it is the point of that remap, solved so the
 substitute renders the tone the original rendered. The product is dark in
 absolute terms because in game it is lit, so the set is rescaled to the mean
 luminance of the old fixed table; every relationship between the layers
-survives. Generated maps read their biome's textures out of
+survives. A map painted from a Sanctuary biome instead reads those textures out of
 `Environment.sanpack` for the same treatment, so a Winter map no longer
 previews in Highlands green.
 
@@ -283,7 +280,7 @@ blocked if any neighbour in its 3×3 exceeds it.
 
 ```
 app/SanctuaryMapConverter/  the whole toolchain: GUI + headless CLI
-        Gui/MainForm.cs   convert one map, convert a folder, generate, deploy
+        Gui/MainForm.cs   convert one map, convert a folder, deploy
         Core/Converter.cs SupCom map -> Sanctuary map (the main event)
         Core/RandomMap.cs random maps by style and biome
         Core/NamedMaps.*  four hand-tuned named maps
@@ -377,40 +374,19 @@ the nav limit are linear, not eased.
 
 ---
 
-## The generator, and what 300 real maps say
+## Measuring the corpus
 
-The generator's numbers come from measuring 291 SupCom maps and 47 shipped
-Sanctuary maps (`--tool measure-sc-corpus`, `--tool measure-sanmaps`), not from
-invention. The short version:
+The converter's judgement calls are settled against measurement, not taste:
+291 Supreme Commander maps and 47 shipped Sanctuary maps were measured to work
+out what a normal map looks like, and the `--tool measure-*` verbs regenerate
+those numbers. That is where the thresholds in the playability report come
+from, and how the texture substitution table was solved.
 
-- **Every spawn gets a ring of alloys** — 3–5 within 6–16 m; three
-  independent sources (Neroxis, the SupCom corpus, the shipped maps) agree.
-  Base rings are placed first, and `MinAlloysNearSpawn` gates on it.
-- **Resource count follows player count, not area** — `AlloyBudget` uses
-  Neroxis's formula, which lands on the corpus medians.
-- **Resources come in clusters** of 3–4, because an expansion should be
-  somewhere you go and hold.
-- **Spawn separation depends on player count** — measured closest-pair
-  fractions: 2P 0.84, 4P 0.39, 6P 0.24, 8P 0.15.
-
-Structure is measured the same way (`--tool measure-sc-terrain`,
-`--tool measure-san-terrain`): the route between the two furthest spawns is found
-and judged — clearance, sustained pinches, overlook by high ground. The
-generator once produced lanes 2–4× narrower than SupCom's and routes hemmed in
-by high ground three times as often; lane clearance, directness and overlook
-are now gated directly, and a candidate re-rolls on any failure:
-
-| check | threshold |
-|---|---|
-| spawns and resources reachable | all |
-| walkable ground connected | ≥ 92% |
-| open ground (contiguous, buildable, < 6°) | ≥ 14% |
-| alloys within 20 m of the barest spawn | ≥ 3 |
-| lane clearance between spawns | ≥ 2.2% of map size |
-| route directness | ≥ 0.82 |
-| route overlooked by high ground | ≤ 55% |
-
----
+This repo used to include a procedural map generator built on the same
+measurements. It has been removed: other people are building better generators,
+and carrying one here meant every converter change had to be made twice. The
+terrain analysis it was built on stays, because the converter's own playability
+report and the measurement tools use it.
 
 ## Deploying
 
